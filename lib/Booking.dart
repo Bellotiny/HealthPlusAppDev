@@ -10,6 +10,8 @@ import 'package:geocoding/geocoding.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:geolocator/geolocator.dart';
+
 
 // Add geocoding package for reverse geocoding.
 class BookingScreen extends StatefulWidget {
@@ -49,31 +51,73 @@ class _BookingScreenState extends State<BookingScreen> {
     // TODO: implement initState
     super.initState();
     requestLocationPermission();
-    _fetchHospitals();
+    _fetchCurrentLocation();
 
   }
 
+  Future<void> _fetchCurrentLocation() async {
+    try {
+      Position position = await Geolocator.getCurrentPosition(
+        locationSettings: LocationSettings(accuracy: LocationAccuracy.high),
+      );
+      setState(() {
+        _initialLocation = LatLng(position.latitude, position.longitude);
+      });
+
+      // Fetch hospitals after updating the location
+      await _fetchHospitals();
+    } catch (e) {
+      print("Error fetching location: $e");
+    }
+  }
+
+
+  LatLng? _getNearestMarker() {
+    if (hospitalMarkers.isEmpty) return null;
+
+    Marker? nearestMarker;
+    double minDistance = double.infinity;
+
+    for (Marker marker in hospitalMarkers) {
+      double distance = Geolocator.distanceBetween(
+        _initialLocation.latitude,
+        _initialLocation.longitude,
+        marker.position.latitude,
+        marker.position.longitude,
+      );
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearestMarker = marker;
+      }
+    }
+
+    return nearestMarker?.position;
+  }
+
   Future<void> requestLocationPermission() async {
-    var status = await Permission.location.request();
+    var status = await Permission.locationWhenInUse.request();
     if (status.isGranted) {
       print("Location permission granted");
-    } else {
+      await _fetchCurrentLocation();
+    } else if (status.isDenied || status.isPermanentlyDenied) {
       print("Location permission denied");
+      // Show a dialog or redirect user to settings
+      openAppSettings();
     }
   }
   Future<void> _fetchHospitals() async {
     final String url =
-        "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=45.5017,-73.5673&radius=10000&type=hospital&key=$apiKey";
+        "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
+        "?location=${_initialLocation.latitude},${_initialLocation.longitude}"
+        "&radius=20000&type=hospital&key=$apiKey";
 
     try {
-      // HTTP request to the Places API
       final response = await http.get(Uri.parse(url));
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         List results = data['results'];
 
-        // Convert each hospital result into a marker
         Set<Marker> markers = results.map((hospital) {
           LatLng position = LatLng(
             hospital['geometry']['location']['lat'],
@@ -87,23 +131,15 @@ class _BookingScreenState extends State<BookingScreen> {
               title: hospital['name'],
               snippet: hospital['vicinity'], // Address of the hospital
             ),
-            icon: BitmapDescriptor.defaultMarkerWithHue(
-              BitmapDescriptor.hueBlue, // Blue color for hospital markers
-            ),
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
           );
         }).toSet();
 
         setState(() {
           hospitalMarkers = markers;
-          print("Markers added: ${hospitalMarkers.length}"); // Debugging
-
         });
 
-        // Handle next_page_token if needed
-        if (data['next_page_token'] != null) {
-          // Fetch additional pages if required
-          print("Next page token: ${data['next_page_token']}");
-        }
+        print("Markers fetched: ${hospitalMarkers.length}");
       } else {
         print("Error fetching hospitals: ${response.statusCode}");
       }
@@ -111,26 +147,39 @@ class _BookingScreenState extends State<BookingScreen> {
       print("Error fetching hospitals: $e");
     }
   }
+
+
   void _openGoogleMap(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      builder: (BuildContext context) {
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.8,
-          child: GoogleMap(
-            initialCameraPosition: CameraPosition(
-              target: montrealCoordinates,
-              zoom: 12,
+    if (_initialLocation == null) {
+      // Show a loading spinner while waiting for the location
+      showDialog(
+        context: context,
+        builder: (context) => Center(child: CircularProgressIndicator()),
+      );
+    } else {
+      // Open the map once the location is fetched
+      showModalBottomSheet(
+        context: context,
+        builder: (BuildContext context) {
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.8,
+            child: GoogleMap(
+              initialCameraPosition: CameraPosition(
+                target: _initialLocation, // Use updated current location
+                zoom: 12,
+              ),
+              myLocationEnabled: true,
+              scrollGesturesEnabled: true,
+              markers: hospitalMarkers, // Add hospital markers to the map
+              onTap: (LatLng location) async {
+                await _getAddressFromCoordinates(location);
+                Navigator.pop(context); // Close the modal after selecting a location
+              },
             ),
-            onTap: (LatLng location) async {
-              await _getAddressFromCoordinates(location);
-              Navigator.pop(context); // Close the modal after selecting a location
-            },
-            markers: hospitalMarkers, // Add hospital markers to the map
-          ),
-        );
-      },
-    );
+          );
+        },
+      );
+    }
   }
   // Reverse geocode to get the address from coordinates
   Future<void> _getAddressFromCoordinates(LatLng coordinates) async {
@@ -334,7 +383,12 @@ class _BookingScreenState extends State<BookingScreen> {
                   padding: EdgeInsets.symmetric(horizontal: 28, vertical: 16),
                   backgroundColor: Colors.white54,
                 ),
-                onPressed: (){},
+                onPressed: () async {
+                  LatLng? nearestLocation = _getNearestMarker();
+                  if (nearestLocation != null) {
+                    await _getAddressFromCoordinates(nearestLocation);
+                  }
+                },
                 child: Text('${bundle.translation('pickNearest')}')
             )
         ),
