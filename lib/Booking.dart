@@ -5,7 +5,13 @@ import 'package:provider/provider.dart';
 import 'Localization.dart';
 import 'AppointmentDatabase.dart';
 import 'SettingsControl.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:permission_handler/permission_handler.dart';
 
+// Add geocoding package for reverse geocoding.
 class BookingScreen extends StatefulWidget {
   const BookingScreen({super.key});
 
@@ -15,15 +21,22 @@ class BookingScreen extends StatefulWidget {
 
 class _BookingScreenState extends State<BookingScreen> {
   final DatabaseAccess _db = DatabaseAccess();
+  TextEditingController addressController = TextEditingController();
+  LatLng? _selectedLocation;
+  String? _selectedAddress;
+  LatLng _initialLocation = LatLng(45.5017, -73.5673);
   int _selectedNavItem = 0;
   User? currentUser;
   String? _notifyBy;
-  TextEditingController addressController =TextEditingController();
+  final String apiKey = "AIzaSyA5SRUdgp80WhwV7sVVwLa1wSbWNPwLQ5g";
+  Set<Marker> hospitalMarkers = {};
+  final LatLng montrealCoordinates = LatLng(45.5017, -73.5673);
+
   TextEditingController provinceController =TextEditingController();
   int currentBookingIndex = 0;
 
   List<String> provinces = ["Alberta", "British Columbia", "Manitoba", "New Brunswick", "Newfoundland and Labrador", "Northwest Territories",
-                      "Nova Scotia", "Nunavut", "Ontario", "Prince Edward Island", "Québec", "Saskatchewan", "Yukon"];
+    "Nova Scotia", "Nunavut", "Ontario", "Prince Edward Island", "Québec", "Saskatchewan", "Yukon"];
   String? selectedProvince;
 
   List<String> doctors = ["Dr. Peter Griffin", "Dr. Megan Fox", "Dr. Freddy Fasbear", "Dr. Bitton Makitten"];
@@ -31,6 +44,113 @@ class _BookingScreenState extends State<BookingScreen> {
 
   DateTime? selectedDate;
   TimeOfDay? selectedTime;
+  @override
+  void initState() {
+    // TODO: implement initState
+    super.initState();
+    requestLocationPermission();
+    _fetchHospitals();
+
+  }
+
+  Future<void> requestLocationPermission() async {
+    var status = await Permission.location.request();
+    if (status.isGranted) {
+      print("Location permission granted");
+    } else {
+      print("Location permission denied");
+    }
+  }
+  Future<void> _fetchHospitals() async {
+    final String url =
+        "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=45.5017,-73.5673&radius=10000&type=hospital&key=$apiKey";
+
+    try {
+      // HTTP request to the Places API
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        List results = data['results'];
+
+        // Convert each hospital result into a marker
+        Set<Marker> markers = results.map((hospital) {
+          LatLng position = LatLng(
+            hospital['geometry']['location']['lat'],
+            hospital['geometry']['location']['lng'],
+          );
+
+          return Marker(
+            markerId: MarkerId(hospital['place_id']),
+            position: position,
+            infoWindow: InfoWindow(
+              title: hospital['name'],
+              snippet: hospital['vicinity'], // Address of the hospital
+            ),
+            icon: BitmapDescriptor.defaultMarkerWithHue(
+              BitmapDescriptor.hueBlue, // Blue color for hospital markers
+            ),
+          );
+        }).toSet();
+
+        setState(() {
+          hospitalMarkers = markers;
+          print("Markers added: ${hospitalMarkers.length}"); // Debugging
+
+        });
+
+        // Handle next_page_token if needed
+        if (data['next_page_token'] != null) {
+          // Fetch additional pages if required
+          print("Next page token: ${data['next_page_token']}");
+        }
+      } else {
+        print("Error fetching hospitals: ${response.statusCode}");
+      }
+    } catch (e) {
+      print("Error fetching hospitals: $e");
+    }
+  }
+  void _openGoogleMap(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.8,
+          child: GoogleMap(
+            initialCameraPosition: CameraPosition(
+              target: montrealCoordinates,
+              zoom: 12,
+            ),
+            onTap: (LatLng location) async {
+              await _getAddressFromCoordinates(location);
+              Navigator.pop(context); // Close the modal after selecting a location
+            },
+            markers: hospitalMarkers, // Add hospital markers to the map
+          ),
+        );
+      },
+    );
+  }
+  // Reverse geocode to get the address from coordinates
+  Future<void> _getAddressFromCoordinates(LatLng coordinates) async {
+    try {
+      List<Placemark> placemarks =
+      await placemarkFromCoordinates(coordinates.latitude, coordinates.longitude);
+      if (placemarks.isNotEmpty) {
+        Placemark place = placemarks[0];
+        setState(() {
+          _selectedAddress =
+          "${place.street}, ${place.locality}, ${place.administrativeArea}, ${place.country}";
+          addressController.text = _selectedAddress ?? "Unknown location";
+        });
+      }
+    } catch (e) {
+      setState(() {
+        addressController.text = "Unable to fetch address: $e";
+      });
+    }
+  }
 
   Widget buildDateTimePicker(BuildContext context, Localization bundle, String picker) {
     return Column(
@@ -48,37 +168,37 @@ class _BookingScreenState extends State<BookingScreen> {
           ),
         SizedBox(height: 16),
         ElevatedButton(
-            onPressed: () async {
-              if (picker == 'date') {
-                // Show the Material Date Picker
-                DateTime? pickedDate = await showDatePicker(
-                  context: context,
-                  initialDate: DateTime.now(),
-                  firstDate: DateTime(2000, 1, 1),
-                  lastDate: DateTime(2100, 12, 31),
-                );
+          onPressed: () async {
+            if (picker == 'date') {
+              // Show the Material Date Picker
+              DateTime? pickedDate = await showDatePicker(
+                context: context,
+                initialDate: DateTime.now(),
+                firstDate: DateTime(2000, 1, 1),
+                lastDate: DateTime(2100, 12, 31),
+              );
 
-                if (pickedDate != null) {
-                  setState(() {
-                    selectedDate = pickedDate;
-                  });
-                }
-              } else {
-                // Show the Material Time Picker
-                TimeOfDay? pickedTime = await showTimePicker(
-                  context: context,
-                  initialTime: TimeOfDay.now(),
-                );
-
-                if (pickedTime != null) {
-                  setState(() {
-                    selectedTime = pickedTime;
-                  });
-                }
+              if (pickedDate != null) {
+                setState(() {
+                  selectedDate = pickedDate;
+                });
               }
-            },
-            child: picker == 'date' ? Text("${bundle.translation('pickDate')}") : Text("${bundle.translation('pickTime')}"),
-          ),
+            } else {
+              // Show the Material Time Picker
+              TimeOfDay? pickedTime = await showTimePicker(
+                context: context,
+                initialTime: TimeOfDay.now(),
+              );
+
+              if (pickedTime != null) {
+                setState(() {
+                  selectedTime = pickedTime;
+                });
+              }
+            }
+          },
+          child: picker == 'date' ? Text("${bundle.translation('pickDate')}") : Text("${bundle.translation('pickTime')}"),
+        ),
       ],
     );
   }
@@ -138,8 +258,8 @@ class _BookingScreenState extends State<BookingScreen> {
       body: SingleChildScrollView(
         child: Center(
           child: Padding(
-            padding: EdgeInsets.all(16.0),
-            child: columnToDisplay()
+              padding: EdgeInsets.all(16.0),
+              child: columnToDisplay()
           ),
         ),
       ),
@@ -183,19 +303,21 @@ class _BookingScreenState extends State<BookingScreen> {
         ),
         SizedBox(height: 45,),
         Container(
-            padding: EdgeInsets.only(left: 40, right: 40),
-            child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  padding: EdgeInsets.symmetric(horizontal: 28, vertical: 16),
-                  backgroundColor: Colors.white54,
+          padding: EdgeInsets.only(left: 40, right: 40),
+          child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                onPressed: (){},
-                child: Text('${bundle.translation('pickLocation')}')
-            )
+                padding: EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+                backgroundColor: Colors.white54,
+              ),
+              onPressed: ()=>_openGoogleMap(context),
+              child: Text('${bundle.translation('pickLocation')}')
+          ),
+
         ),
+
         SizedBox(height: 30,),
         Container(
             padding: EdgeInsets.only(left: 20, right: 20),
@@ -242,7 +364,7 @@ class _BookingScreenState extends State<BookingScreen> {
         ),
         SizedBox(height: 4),
         Padding(
-            padding: EdgeInsets.only(left: 20, right: 20),
+          padding: EdgeInsets.only(left: 20, right: 20),
           child: Container(
             decoration: BoxDecoration(
               border: Border.all(
@@ -353,7 +475,7 @@ class _BookingScreenState extends State<BookingScreen> {
         ),
         SizedBox(height: 70,),
         Container(
-            child: buildDateTimePicker(context,bundle,'date'),
+          child: buildDateTimePicker(context,bundle,'date'),
         ),
         SizedBox(height: 90,),
         Container(
