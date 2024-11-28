@@ -19,8 +19,8 @@ void main() async{
   await Firebase.initializeApp(
       options: FirebaseOptions(
           apiKey: "AIzaSyAdWzb4aEOxT3TV3N0QvyUcDM1YqcBCQ2o",
-          appId: "1034097704666",
-          messagingSenderId: "1:1034097704666:android:8d4fb70b9ee93c6731afe3",
+          appId: "1:1034097704666:android:8d4fb70b9ee93c6731afe3",
+          messagingSenderId: "1034097704666",
           projectId: "healthplus-7f47c"
       )
   );
