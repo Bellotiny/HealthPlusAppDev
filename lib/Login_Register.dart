@@ -37,8 +37,8 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     final bundle = Provider.of<Localization>(context);
 
-    void verify(BuildContext context) async {
-      User? user = _db.getUser(_emailController.text) as User?;
+    Future<void> verify(BuildContext context) async {
+      User? user = await _db.getUser(_emailController.text) as User?;
 
       if (user != null) {
         // Check if the password matches
@@ -198,8 +198,8 @@ class _LoginScreenState extends State<LoginScreen> {
                             backgroundColor: Colors.blueAccent,
                             foregroundColor: Colors.white,
                           ),
-                          onPressed: () {
-                            verify(context);
+                          onPressed: () async{
+                            await verify(context);
                           },
                           child: Text(
                             "${bundle.translation('login')}",
