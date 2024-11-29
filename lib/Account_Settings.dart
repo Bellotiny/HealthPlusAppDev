@@ -178,33 +178,33 @@ class _AccountScreenState extends State<AccountScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.start,
                     children: [
-                      SizedBox(width: 90,),
+                      SizedBox(width: 90),
                       Radio<String>(
-                        value: "${bundle.translation('email')}",
-                        groupValue: _authentifyBy,
+                        value: "email",
+                        groupValue: currentUser?.authentifyBy,
                         onChanged: (String? value) {
                           setState(() {
                             _authentifyBy = value;
                           });
                         },
                       ),
-                      Text("${bundle.translation('email')}"),
+                      Text(bundle.translation('email')),
                     ],
                   ),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.start,
                     children: [
-                      SizedBox(width: 90,),
+                      SizedBox(width: 90),
                       Radio<String>(
-                        value: "${bundle.translation('phone')}",
-                        groupValue: _authentifyBy,
+                        value: "phone",
+                        groupValue: currentUser?.authentifyBy,
                         onChanged: (String? value) {
                           setState(() {
                             _authentifyBy = value;
                           });
                         },
                       ),
-                      Text("${bundle.translation('phone')}"),
+                      Text(bundle.translation('phone')),
                     ],
                   ),
                   SizedBox(height: 40,),
@@ -280,7 +280,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   User? currentUser;
-  String? _language; // Will be initialized with the current language after loading preferences
+  String? _language;
 
   @override
   void initState() {
@@ -399,13 +399,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         SizedBox(width: 100),
         Radio<int>(
           value: value,
-          groupValue: _themeMode,
-          onChanged: (int? newValue) {
-            if (newValue != null) {
-              setState(() {
-                _themeMode = newValue;
-              });
-              themeControl.setThemeMode(newValue);
+          groupValue: themeControl.themeMode,
+          onChanged: (int? value) {
+            if (value != null) {
+              themeControl.setThemeMode(value);
             }
           },
         ),
@@ -432,13 +429,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         SizedBox(width: 100),
         Radio<String>(
           value: value,
-          groupValue: _language,
-          onChanged: (String? newLanguage) async {
-            if (newLanguage != null) {
-              setState(() {
-                _language = newLanguage;
-              });
-              await bundle.switchLanguage(newLanguage); // Save and switch language
+          groupValue: bundle.currentLanguage,
+          onChanged: (String? value) async {
+            if (value != null) {
+              await bundle.switchLanguage(value); // Save and switch language
             }
           },
         ),

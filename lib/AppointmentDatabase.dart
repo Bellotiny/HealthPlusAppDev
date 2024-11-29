@@ -2,7 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart' as auth;
 
 class DatabaseAccess with ChangeNotifier {
   static final DatabaseAccess _instance = DatabaseAccess._internal();
@@ -23,42 +23,76 @@ class DatabaseAccess with ChangeNotifier {
 
   String get password => password;
 
-  Future<void> login(User? user) async {
+  Future<bool> login(User? user) async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
 
     if (user == null) {
       _currentUser = null;
-      await prefs.remove('userEmail'); // Clear the saved email if logging out
+      await prefs.remove('userEmail');
     } else {
-      _currentUser = user;
-      await prefs.setString('userEmail', user.email); // Save the user's email
-      notifyListeners(); // Notify listeners to update the UI
-      if (currentUser?.authentifyBy == "email") {
-        sendEmailVerification();
-      } else {
-        sendPhoneVerification();
+      try{
+        auth.UserCredential userCredential = await auth.FirebaseAuth.instance.signInWithEmailAndPassword(
+          email: user.email,
+          password: user.password,
+        );
+
+        if(userCredential != null){
+          print('Logged in as: ${user.firstName} ${user.lastName}');
+          _currentUser = user;
+          await prefs.setString('userEmail', user.email);
+          notifyListeners();
+          print(currentUser.toString());
+          if (currentUser?.authentifyBy == "E-Mail") {
+            sendEmailVerification();
+            return true;
+          } else {
+            sendPhoneVerification();
+          }
+        }else {
+          print("No user logged in Firebase.");
+          return false;
+        }
+      }catch (e) {
+        print('Login failed: $e');
+        return false;
       }
     }
+    return false;
   }
 
   Future<void> sendPhoneVerification() async {
     try {
-      await FirebaseAuth.instance.verifyPhoneNumber(
-        phoneNumber: currentUser?.phoneNumber,
-        verificationCompleted: (PhoneAuthCredential credential) async {
-          // Auto-retrieve or instant verification
-          await FirebaseAuth.instance.signInWithCredential(credential);
+      final phoneNumber = auth.FirebaseAuth.instance.currentUser?.phoneNumber;
+      if (phoneNumber == null || phoneNumber.isEmpty) {
+        print("No phone number associated with the user.");
+        return;
+      }
+
+      await auth.FirebaseAuth.instance.verifyPhoneNumber(
+        phoneNumber: phoneNumber,
+        verificationCompleted: (auth.PhoneAuthCredential credential) async {
+          // Automatically signs in the user once the phone number is verified
+          await auth.FirebaseAuth.instance.signInWithCredential(credential);
           print("Phone verification completed successfully.");
         },
-        verificationFailed: (FirebaseAuthException e) {
+        verificationFailed: (auth.FirebaseAuthException e) {
+          // Handle errors like network issues or invalid phone numbers
           print("Phone verification failed: ${e.message}");
         },
         codeSent: (String verificationId, int? resendToken) {
+          // Save the verification ID, which will be used later to verify the code
           this.verificationId = verificationId;
-          print("Code sent to ${currentUser?.phoneNumber}");
+          print("Code sent to $phoneNumber");
+
+          // Optionally, prompt the user to enter the verification code
+          // You can create a UI for entering the code, or call a method here.
+          // For example:
+          // promptForCode();
         },
         codeAutoRetrievalTimeout: (String verificationId) {
+          // In case the automatic code retrieval times out
           this.verificationId = verificationId;
+          print("Auto-retrieval timeout for $phoneNumber");
         },
       );
     } catch (e) {
@@ -66,33 +100,42 @@ class DatabaseAccess with ChangeNotifier {
     }
   }
 
-  Future<bool> verifyPhoneCode(String code) async {
-    if (verificationId == null) {
-      print("Verification ID is null. Please request a new code.");
-      return false;
-    }
+  Future<bool> verifyPhoneCode(String smsCode) async {
     try {
-      final credential = PhoneAuthProvider.credential(
-        verificationId: verificationId!,
-        smsCode: code.trim(),
-      );
+      if (verificationId != null) {
+        final auth.PhoneAuthCredential credential = auth.PhoneAuthProvider.credential(
+          verificationId: verificationId!,
+          smsCode: smsCode,
+        );
 
-      await FirebaseAuth.instance.signInWithCredential(credential);
-      print("Phone code verified successfully.");
-      return true; // Verification succeeded
+        // Sign in the user with the phone credential
+        await auth.FirebaseAuth.instance.signInWithCredential(credential);
+        print("Phone number verified successfully.");
+        return true; // Return true if verification is successful
+      } else {
+        print("Verification ID is null, unable to verify the code.");
+        return false; // Return false if verification ID is not available
+      }
     } catch (e) {
-      print("Invalid verification code: $e");
-      return false; // Verification failed
+      print("Error verifying phone number: $e");
+      return false; // Return false if an error occurs during verification
     }
   }
 
+  void Function(User?)? callback = (User? user) {
+    if (user != null) {
+      print("User is logged in: ${user.email}");
+    } else {
+      print("No user is logged in.");
+    }
+  };
 
   Future<void> sendEmailVerification() async {
     try {
-      final user = FirebaseAuth.instance.currentUser;
+      final user = auth.FirebaseAuth.instance.currentUser;
       if (user != null) {
         await user.sendEmailVerification();
-        print("Verification email sent to ${currentUser?.email}");
+        print("Verification email sent to ${user.email}");
       } else {
         print("No user is logged in to send email verification.");
       }
@@ -102,16 +145,40 @@ class DatabaseAccess with ChangeNotifier {
   }
 
   Future<bool> isEmailVerified() async {
-    await FirebaseAuth.instance.currentUser?.reload();
-    return FirebaseAuth.instance.currentUser?.emailVerified ?? false;
+    try {
+      final currentUser = auth.FirebaseAuth.instance.currentUser;
+
+      if (currentUser == null) {
+        print("No user is logged in.");
+        return false;
+      }
+
+      // Reload user state from Firebase
+      await currentUser.reload();
+      final isVerified = currentUser.emailVerified;
+
+      print("Email verification status after reload: $isVerified");
+      return isVerified;
+    } catch (e) {
+      print("Error checking email verification: $e");
+      return false;
+    }
   }
+
+
+
 
   Future<void> logout() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    _currentUser = null; // Clear the current user in memory
+    _currentUser = null;
     await prefs.remove(
-        'userEmail'); // Forget the user email in SharedPreferences
-    notifyListeners(); // Notify listeners to update the UI
+        'userEmail');
+    notifyListeners();
+    if(_currentUser == null){
+      print('You Have Successfully Logged Out!!!!!');
+    } else{
+      print('You Have Failed to Log Out!!!!!');
+    }
   }
 
   // Load the saved user
@@ -147,19 +214,33 @@ class DatabaseAccess with ChangeNotifier {
     print("Password updated successfully.");
   }
 
-  Future<void> addUser(User user) {
-    return users
-        .add({
-      'firstName': '${user.firstName}',
-      'lastName': '${user.lastName}',
-      'email': '${user.email}',
-      'password': '${user.password}',
-      'age': '${user.age}',
-      'gender': '${user.gender}',
-      'authentifyBy': '${user.authentifyBy}'
-    })
-        .then((value) => print('user added'))
-        .catchError((error) => print('Failed to add the user to Firestore'));
+  Future<void> addUser(User newUser) async{
+    try{
+      if (newUser.email != null && newUser.password != null) {
+        // Create a new user with email and password using Firebase Authentication
+        auth.UserCredential userCredential = await auth.FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email: newUser.email,
+          password: newUser.password,
+        );
+        if(userCredential != null){
+          return users
+              .add({
+            'firstName': '${newUser.firstName}',
+            'lastName': '${newUser.lastName}',
+            'email': '${newUser.email}',
+            'password': '${newUser.password}',
+            'age': '${newUser.age}',
+            'gender': '${newUser.gender}',
+            'phoneNumber': '${newUser.phoneNumber}',
+            'authentifyBy': '${newUser.authentifyBy}'
+          })
+              .then((value) => print('A new user was added'))
+              .catchError((error) => print('Failed to add the user to Firestore'));
+        }
+      }
+    }catch (e) {
+      print('Error creating user: $e');
+    }
   }
 
   Future<User?> getUser(String email) async {
@@ -178,7 +259,7 @@ class DatabaseAccess with ChangeNotifier {
         lastName: doc['lastName'] ?? '',
         email: doc['email'] ?? '',
         password: doc['password'] ?? '',
-        age: doc['age'] ?? '',
+        age: doc['age'] ?? 0,
         gender: doc['gender'] ?? '',
         phoneNumber: doc['phoneNumber'] ?? '',
         authentifyBy: doc['authentifyBy'] ?? '',
