@@ -24,7 +24,7 @@
       "phoneTextField": "Enter Phone number",
       "authenticate": "How would you like to authenticate?",
       "accountUsed": "Account with corresponding email already in use",
-      "passwordRequirement": "Password must be at least 1 uppercase, 1 lowercase, 1 digit, and 4 characters long",
+      "passwordRequirement": "Password must be at least 1 uppercase, 1 lowercase, 1 digit, and 6 characters long",
       "verifyIdentity": "Verify your identity",
       "enterCode": "Enter code sent",
       "validateButton": "Validate",

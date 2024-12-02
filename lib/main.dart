@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'Modify.dart';
 import 'package:provider/provider.dart';
@@ -17,13 +18,14 @@ import 'package:firebase_core/firebase_core.dart';
 void main() async{
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
-      options: FirebaseOptions(
-          apiKey: "AIzaSyAdWzb4aEOxT3TV3N0QvyUcDM1YqcBCQ2o",
-          appId: "1:1034097704666:android:8d4fb70b9ee93c6731afe3",
-          messagingSenderId: "1034097704666",
-          projectId: "healthplus-7f47c"
-      )
+    options: FirebaseOptions(
+      apiKey: "AIzaSyAdWzb4aEOxT3TV3N0QvyUcDM1YqcBCQ2o",
+      appId: "1:1034097704666:android:8d4fb70b9ee93c6731afe3",
+      messagingSenderId: "1034097704666",
+      projectId: "healthplus-7f47c",
+    ),
   );
+  FirebaseAuth.instance.setSettings(appVerificationDisabledForTesting: true);
   runApp(
     MultiProvider(
       providers: [

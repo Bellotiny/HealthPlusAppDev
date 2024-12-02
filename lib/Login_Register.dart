@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart' as auth;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -43,13 +44,14 @@ class _LoginScreenState extends State<LoginScreen> {
       if (user != null) {
         // Check if the password matches
         if (user.password == _passwordController.text) {
-          print("Login successful!");
-          _db.login(user);
-          Navigator.pushNamed(
-            context,
-            '/validate',
-            arguments: {"destination": "main"}
-          );
+          if(await _db.login(user)){
+            print("Fire Authentication Login successful!");
+            Navigator.pushNamed(
+                context,
+                '/validate',
+                arguments: {"destination": "/main"}
+            );
+          }
         } else {
           // Password is incorrect
           showDialog(
@@ -351,7 +353,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   Future<bool> verifyPassword() async {
     return _passwordController.text
-        .contains(RegExp(r'^(?=.*[A-Z])(?=.*[a-z])(?=.*\d).{4,}$'));
+        .contains(RegExp(r'^(?=.*[A-Z])(?=.*[a-z])(?=.*\d).{6,}$'));
   }
 
   @override
@@ -630,84 +632,83 @@ class _RegisterScreenState extends State<RegisterScreen> {
 }
 
 class ValidateScreen extends StatefulWidget {
-  const ValidateScreen({super.key});
+  final String? destination;
+
+  const ValidateScreen({super.key, this.destination});
 
   @override
   State<ValidateScreen> createState() => _ValidateScreenState();
 }
 
+
 class _ValidateScreenState extends State<ValidateScreen> {
   final DatabaseAccess _db = DatabaseAccess();
-  TextEditingController _codeController = TextEditingController();
-  String? destination;
+  late String? destination;
+  late TextEditingController _codeController = TextEditingController();
+  bool isCheckingVerification = false;
 
-  @override
+  Future<void> _startEmailVerificationCheck() async {
+    setState(() {
+      isCheckingVerification = true;
+    });
+
+    final verified = await waitForEmailVerification(maxRetries: 10);
+    setState(() {
+      isCheckingVerification = false;
+    });
+
+    if (verified) {
+      final route = destination == "forgetPassword" ? '/forgetPassword' : '/main';
+      Navigator.pushReplacementNamed(context, route);
+    } else {
+      // Show error if the verification wasn't completed
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Email verification not completed. Please try again.')),
+      );
+    }
+  }
+
+  Future<bool> waitForEmailVerification({int maxRetries = 10, Duration interval = const Duration(seconds: 3)}) async {
+    for (int i = 0; i < maxRetries; i++) {
+      final isVerified = await _db.isEmailVerified();
+      if (isVerified) {
+        return true;
+      }
+
+      // Wait for the next retry
+      await Future.delayed(interval);
+    }
+    return false; // Verification not completed within the retries
+  }
+
   Widget build(BuildContext context) {
     final bundle = Provider.of<Localization>(context);
 
-    // Route generator for '/validate'
-    onGenerateRoute: (settings) {
-      if (settings.name == '/validate') {
-        final args = settings.arguments as Map<String, dynamic>;
-        destination = args['destination'];
-        return MaterialPageRoute(builder: (context) => ValidateScreen());
-      }
-    };
-
-    Future<bool> _checkEmailVerification(BuildContext context) async {
-      return await _db.isEmailVerified();
-    }
-
-    Widget? columnToDisplay() {
-      if (_db.currentUser?.authentifyBy == "email") {
-        FutureBuilder<bool>(
-          future: _checkEmailVerification(context),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return _buildEmail(context, bundle);
-            }
-            if (snapshot.hasData && snapshot.data == true) {
-              if(destination == "main"){
-                Navigator.pushNamed(context, '/main');
-              } else{
-                Navigator.pushNamed(context, '/forgetPassword');
-              }
-              return SizedBox();
-            }
-            return _buildEmail(context, bundle);
-          },
-        );
-      } else if (_db.currentUser?.authentifyBy == "phone") {
-        return _buildPhone(context, bundle);
-      }
-      return null;
-    }
+    final routeArgs = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    destination = routeArgs?['destination'];
 
     return Scaffold(
-      appBar: AppBar(
-        centerTitle: true,
-        title: Text(
-          'Health +',
-          style: TextStyle(fontSize: 24),
-        ),
+    appBar: AppBar(
+      centerTitle: true,
+      title: const Text('Health +', style: TextStyle(fontSize: 24)),
+    ),
+    body: Center(
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: isCheckingVerification
+            ? const CircularProgressIndicator() // Show loader during polling
+            : _buildEmail(context, bundle),
       ),
-      body: Center(
-        child: Padding(
-          padding: EdgeInsets.all(20.0),
-          child: columnToDisplay(),
-        ),
-      ),
+    ),
     );
   }
 
-  Column _buildEmail(BuildContext context, Localization bundle){
+  Column _buildEmail(BuildContext context, Localization bundle) {
     return Column(
       mainAxisAlignment: MainAxisAlignment.start,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        SizedBox(
-          height: 60,
-        ),
+        const SizedBox(height: 60),
         Container(
           width: 330,
           height: 80,
@@ -727,37 +728,39 @@ class _ValidateScreenState extends State<ValidateScreen> {
               '${bundle.translation('verifyIdentity')}',
               style: TextStyle(
                 color: Colors.white,
-                fontSize: bundle.currentLanguage == 'EN' ? 52 : 46,
+                fontSize: bundle.currentLanguage == 'EN' ? 42 : 32,
                 fontWeight: FontWeight.bold,
               ),
             ),
           ),
         ),
-        SizedBox(
-          height: 40,
-        ),
-        Container(
-          padding: EdgeInsets.only(left: 20, right: 20),
-          child: Text('A verification email was sent!'),
-        ),
-        SizedBox(
-          height: 40,
-
-        ),
+        const SizedBox(height: 40),
+        const Text('A verification email was sent! Please check your inbox.'),
+        const SizedBox(height: 40),
         ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-              padding:
-              EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              backgroundColor: Colors.blueAccent,
-              foregroundColor: Colors.white,
+          style: ElevatedButton.styleFrom(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
             ),
-            onPressed: () async {
-              _db.sendEmailVerification();
-            },
-            child: Text("${bundle.translation('resendEmail')}")
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            backgroundColor: Colors.blueAccent,
+            foregroundColor: Colors.white,
+          ),
+          onPressed: _startEmailVerificationCheck,
+          child: Text(bundle.translation('verifyEmail')),
+        ),
+        const SizedBox(height: 20),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            backgroundColor: Colors.blueAccent,
+            foregroundColor: Colors.white,
+          ),
+          onPressed: _db.sendEmailVerification,
+          child: Text(bundle.translation('resendEmail')),
         ),
       ],
     );
@@ -874,7 +877,7 @@ class _ForgetPasswordScreenState extends State<ForgetPasswordScreen> {
 
   Future<bool> verifyPassword() async {
     return _passwordController.text
-        .contains(RegExp(r'^(?=.*[A-Z])(?=.*[a-z])(?=.*\d).{4,}$'));
+        .contains(RegExp(r'^(?=.*[A-Z])(?=.*[a-z])(?=.*\d).{6,}$'));
   }
 
   @override
