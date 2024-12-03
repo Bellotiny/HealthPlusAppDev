@@ -1,5 +1,7 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:path/path.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as auth;
@@ -11,6 +13,8 @@ class DatabaseAccess with ChangeNotifier {
   CollectionReference users = FirebaseFirestore.instance.collection('Users');
   CollectionReference appointment = FirebaseFirestore.instance.collection(
       'Appointments');
+  CollectionReference doctors = FirebaseFirestore.instance.collection('Doctors');
+
   String? verificationId;
 
   factory DatabaseAccess() {
@@ -165,9 +169,6 @@ class DatabaseAccess with ChangeNotifier {
     }
   }
 
-
-
-
   Future<void> logout() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     _currentUser = null;
@@ -294,6 +295,151 @@ class DatabaseAccess with ChangeNotifier {
         print('Failed to delete the users in Firestore'));
   }
 
+  Future<Doctor?> getDoctor(String doctorId) async {
+    try {
+      DocumentSnapshot doc = await FirebaseFirestore.instance
+          .collection('Doctors')
+          .doc(doctorId)
+          .get();
+
+      if (doc.exists) {
+        return Doctor.fromMap({
+          'id': doc.id,  // Add the document ID into the map
+          ...doc.data() as Map<String, dynamic>  // Add the other data fields
+        });
+      } else {
+        print('Doctor with ID $doctorId not found.');
+        return null;
+      }
+    } catch (e) {
+      print('Error fetching doctor data: $e');
+      return null;
+    }
+  }
+
+
+  Future<List<Doctor>> getAllDoctors() async {
+    try {
+      QuerySnapshot snapshot = await FirebaseFirestore.instance
+          .collection('Doctors')
+          .get();
+
+      List<Doctor> doctors = snapshot.docs.map((doc) {
+        return Doctor.fromMap({
+          'id': doc.id,
+          ...doc.data() as Map<String, dynamic>,
+        });
+      }).toList();
+
+      return doctors;
+    } catch (e) {
+      print('Error fetching doctors: $e');
+      return [];
+    }
+  }
+
+
+  Future<List<Schedule>?> getDoctorSchedule(String doctorId) async {
+    Doctor? doctor = await getDoctor(doctorId);
+
+    if (doctor != null) {
+      return doctor.schedule;
+    }
+    return [];
+  }
+
+  Future<void> updateDoctorTimeSlot(
+      String doctorId, String day, String timeSlot, String newStatus) async {
+    try {
+      Doctor? doctor = await getDoctor(doctorId);
+
+      if (doctor != null) {
+        Schedule? daySchedule;
+        for (var schedule in doctor.schedule) {
+          if (schedule.day == day) {
+            daySchedule = schedule;
+            break;
+          }
+        }
+
+        if (daySchedule != null) {
+          // Update the time slot status
+          for (var slot in daySchedule.timeSlots) {
+            if (slot.timeRange == timeSlot) {
+              slot.status = newStatus;
+              break;
+            }
+          }
+
+          await FirebaseFirestore.instance
+              .collection('Doctors')
+              .doc(doctorId)
+              .update({
+            'schedule': doctor.schedule
+                .map((schedule) => schedule.toMap())
+                .toList(),
+          });
+
+          print("Time slot status updated successfully for Doctor ID: $doctorId");
+        } else {
+          print("Day schedule not found for $day.");
+        }
+      } else {
+        print("Doctor not found with ID: $doctorId.");
+      }
+    } catch (e) {
+      print("Error updating time slot: $e");
+    }
+  }
+
+  Future<List<String>> getAvailableTimes(String? doctorId,DateTime selectedDate) async {
+    int weekday = selectedDate.weekday;
+
+    Doctor? doctor = await getDoctor(doctorId!);
+    if (doctor == null) {
+      return [];
+    }
+
+    Map<String, dynamic> schedule = doctor.schedule as Map<String, dynamic>;
+
+    String dayOfWeek = _getDayStringFromWeekday(weekday);
+
+    if (schedule.containsKey(dayOfWeek)) {
+      List<dynamic> timeSlots = schedule[dayOfWeek]['timeSlots'] ?? [];
+
+      List<String> availableTimes = timeSlots
+          .where((slot) => slot['status'] == 'available')
+          .map<String>((slot) => slot['time'])
+          .toList();
+
+      return availableTimes;
+    }
+
+    return [];
+  }
+
+  String _getDayStringFromWeekday(int weekday) {
+    switch (weekday) {
+      case 1:
+        return 'Monday';
+      case 2:
+        return 'Tuesday';
+      case 3:
+        return 'Wednesday';
+      case 4:
+        return 'Thursday';
+      case 5:
+        return 'Friday';
+      case 6:
+        return 'Saturday';
+      case 7:
+        return 'Sunday';
+      default:
+        return '';
+    }
+  }
+
+
   Future<void> addAppointment(Appointment apt) {
     return appointment
         .add({
@@ -314,7 +460,6 @@ class DatabaseAccess with ChangeNotifier {
     String today = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now
         .day.toString().padLeft(2, '0')}';
 
-    // Fetch appointments where date is today or in the future
     QuerySnapshot snapshot = await appointment
         .where('email', isEqualTo: currentUser?.email)
         .where('date', isGreaterThanOrEqualTo: today)
@@ -324,7 +469,6 @@ class DatabaseAccess with ChangeNotifier {
     List<Appointment> appointments = [];
 
     if (snapshot.docs.isNotEmpty) {
-      // Initialize DateFormat for parsing date and time
       DateFormat dateFormat = DateFormat('yyyy-MM-dd');
       DateFormat dayFormat = DateFormat('MMMM d, yyyy');
 
@@ -332,18 +476,16 @@ class DatabaseAccess with ChangeNotifier {
         String dateString = doc['date'] ?? '';
         String timeString = doc['time'] ?? '';
 
-        // If dateString contains both date and time, format it to only include the date
         String formattedDate;
         try {
           DateTime dateTime = dateFormat.parse(dateString);
           formattedDate =
-              dateFormat.format(dateTime); // Extract only the date part
+              dateFormat.format(dateTime);
         } catch (e) {
           print('Error parsing date: $e');
           return null;
         }
 
-        // Combine formatted date and time strings for parsing the full DateTime
         DateTime appointmentDateTime;
         try {
           appointmentDateTime =
@@ -353,7 +495,6 @@ class DatabaseAccess with ChangeNotifier {
           return null;
         }
 
-        // Only include future or current appointments
         if (appointmentDateTime.isAfter(now) ||
             appointmentDateTime.isAtSameMomentAs(now)) {
           DateTime newDate = dateFormat.parse(formattedDate);
@@ -376,13 +517,11 @@ class DatabaseAccess with ChangeNotifier {
     return appointments;
   }
 
-
   Future<List<Appointment>> getHistory() async {
     DateTime now = DateTime.now();
     String today = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now
         .day.toString().padLeft(2, '0')}';
 
-    // Fetch appointments where date is today or in the future
     QuerySnapshot snapshot = await appointment
         .where('email', isEqualTo: currentUser?.email)
         .get();
@@ -390,9 +529,7 @@ class DatabaseAccess with ChangeNotifier {
     List<Appointment> appointments = [];
 
     if (snapshot.docs.isNotEmpty) {
-      // Initialize DateFormat for parsing date and time
-      DateFormat dateFormat = DateFormat(
-          'yyyy-MM-dd'); // Adjust based on the actual format stored in Firestore
+      DateFormat dateFormat = DateFormat('yyyy-MM-dd');
       DateFormat dayFormat = DateFormat('EEEE, MMMM d, yyyy');
 
       appointments = snapshot.docs.map((doc) {
@@ -418,17 +555,13 @@ class DatabaseAccess with ChangeNotifier {
   }
 
   Future<List<List<Appointment>>> getAppointmentsGroupedByWeek() async {
-    // Fetch the list of appointments from Firestore
-    List<
-        Appointment> appointments = await getHistory(); // Assuming getHistory fetches the appointments
+    List<Appointment> appointments = await getHistory(); // Assuming getHistory fetches the appointments
 
-    // Helper function to get the week number from a date
     int getWeekNumber(DateTime date) {
       var formatter = DateFormat('w');
       return int.parse(formatter.format(date));
     }
 
-    // Group appointments by week
     Map<int, List<Appointment>> weeklyGroups = {};
     for (Appointment appointment in appointments) {
       DateTime date = DateTime.parse(appointment.date);
@@ -571,5 +704,76 @@ class Appointment {
   @override
   String toString() {
     return 'Appointment{id: $id, email: $email, date: $date, time: $time, location: $location, doctor: $doctor}';
+  }
+}
+
+class Doctor {
+  String? id;
+  String doctor;
+  String specialty;
+  List<Schedule> schedule;
+
+  Doctor({
+    this.id,
+    required this.doctor,
+    required this.specialty,
+    required this.schedule,
+  });
+
+  factory Doctor.fromMap(Map<String, dynamic> map) {
+    return Doctor(
+      id: map['id'],
+      doctor: map['doctor'] ?? '',
+      specialty: map['specialty'] ?? '',
+      schedule: map['schedule'] ?? {},
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'doctor': doctor,
+      'specialty': specialty,
+      'schedule': {
+        for (var s in schedule) s.day: s.toMap(),
+      },
+    };
+  }
+}
+
+class Schedule {
+  String day;
+  List<TimeSlot> timeSlots;
+
+  Schedule({required this.day, required this.timeSlots});
+
+  Schedule.fromMap(String day, List<Map<String, dynamic>> rawSlots)
+      : day = day,
+        timeSlots = rawSlots.map((slot) => TimeSlot.fromMap(slot)).toList();
+
+  Map<String, dynamic> toMap() {
+    return {
+      'timeSlots': timeSlots.map((slot) => slot.toMap()).toList(),
+    };
+  }
+}
+
+class TimeSlot {
+  String timeRange;
+  String status;
+
+  TimeSlot({required this.timeRange, required this.status});
+
+  factory TimeSlot.fromMap(Map<String, dynamic> raw) {
+    return TimeSlot(
+      timeRange: raw['timeRange'] ?? '',
+      status: raw['status'] ?? 'available',
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'timeRange': timeRange,
+      'status': status,
+    };
   }
 }

@@ -321,6 +321,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   Future<bool> isAccountNotUsed(BuildContext context, Localization bundle) async {
 
+    if(_firstNameController.text.isEmpty||_lastNameController.text.isEmpty||_emailController.text.isEmpty||
+        _passwordController.text.isEmpty||_ageController.text.isEmpty||_genderController.text.isEmpty||
+        _phoneNumberController.text.isEmpty){
+      _showErrorMessage(context, '${bundle.translation('missingField')}',bundle);
+      return false;
+    }
+    if (int.tryParse(_ageController.text) == null) {
+      _showErrorMessage(context, '${bundle.translation('invalidAge')}', bundle);
+      return false;
+    }
+
     if (await _db.getUser(_emailController.text) == null) {
       // Check if the password matches the confirmed password
       if (await verifyPassword()) {
@@ -329,22 +340,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
       } else {
         // Password is incorrect
         _showErrorMessage(context,
-            "${bundle.translation('passwordRequirement')}");
+            "${bundle.translation('passwordRequirement')}", bundle);
         return false;
       }
     } else {
       // UserID already in use in the database
-      _showErrorMessage(context, "${bundle.translation('accountUsed')}");
+      _showErrorMessage(context, "${bundle.translation('accountUsed')}", bundle);
       return false;
     }
   }
 
-  void _showErrorMessage(BuildContext context, String message) {
+  void _showErrorMessage(BuildContext context, String message, Localization bundle) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text("Registration Failed"),
+          title: Text("${bundle.translation('registrationFailed')}"),
           content: Text(message),
         );
       },
@@ -499,7 +510,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     controller: _phoneNumberController,
                     decoration: InputDecoration(
                       labelText: "${bundle.translation('phone')}",
-                      hintText: "${bundle.translation('phoneTextField')}",
+                      hintText: "+1 222-333-4444",
                       border: OutlineInputBorder(),
                       // Full border around the TextField
                       floatingLabelBehavior: FloatingLabelBehavior.always,
@@ -647,7 +658,7 @@ class _ValidateScreenState extends State<ValidateScreen> {
   late TextEditingController _codeController = TextEditingController();
   bool isCheckingVerification = false;
 
-  Future<void> _startEmailVerificationCheck() async {
+  Future<void> _startEmailVerificationCheck(Localization bundle) async {
     setState(() {
       isCheckingVerification = true;
     });
@@ -663,7 +674,7 @@ class _ValidateScreenState extends State<ValidateScreen> {
     } else {
       // Show error if the verification wasn't completed
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Email verification not completed. Please try again.')),
+        SnackBar(content: Text('${bundle.translation('emailNotVerified')}')),
       );
     }
   }
@@ -728,14 +739,14 @@ class _ValidateScreenState extends State<ValidateScreen> {
               '${bundle.translation('verifyIdentity')}',
               style: TextStyle(
                 color: Colors.white,
-                fontSize: bundle.currentLanguage == 'EN' ? 42 : 32,
+                fontSize: bundle.currentLanguage == 'EN' ? 36 : 30,
                 fontWeight: FontWeight.bold,
               ),
             ),
           ),
         ),
         const SizedBox(height: 40),
-        const Text('A verification email was sent! Please check your inbox.'),
+         Text('${bundle.translation('emailSent')}'),
         const SizedBox(height: 40),
         ElevatedButton(
           style: ElevatedButton.styleFrom(
@@ -746,7 +757,7 @@ class _ValidateScreenState extends State<ValidateScreen> {
             backgroundColor: Colors.blueAccent,
             foregroundColor: Colors.white,
           ),
-          onPressed: _startEmailVerificationCheck,
+          onPressed: (){_startEmailVerificationCheck(bundle);},
           child: Text(bundle.translation('verifyEmail')),
         ),
         const SizedBox(height: 20),
@@ -974,7 +985,7 @@ class _ForgetPasswordScreenState extends State<ForgetPasswordScreen> {
                             return AlertDialog(
                               title: Text("Password Change Failed"),
                               content: Text(
-                                  'Password must be at least 1 uppercase, 1 lowercase, 1 digit, and 4 characters long'),
+                                  '${bundle.translation('passwordRequirement')}'),
                             );
                           },
                         );

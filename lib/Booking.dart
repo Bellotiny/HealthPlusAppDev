@@ -41,8 +41,8 @@ class _BookingScreenState extends State<BookingScreen> {
     "Nova Scotia", "Nunavut", "Ontario", "Prince Edward Island", "Québec", "Saskatchewan", "Yukon"];
   String? selectedProvince;
 
-  List<String> doctors = ["Dr. Peter Griffin", "Dr. Megan Fox", "Dr. Freddy Fasbear", "Dr. Bitton Makitten"];
-  String? selectedDoctor;
+  List<Doctor>? doctors;
+  Doctor? selectedDoctor;
 
   DateTime? selectedDate;
   TimeOfDay? selectedTime;
@@ -233,16 +233,16 @@ class _BookingScreenState extends State<BookingScreen> {
                 });
               }
             } else {
-              // Show the Material Time Picker
-              TimeOfDay? pickedTime = await showTimePicker(
-                context: context,
-                initialTime: TimeOfDay.now(),
-              );
+              if (selectedDate != null) {
+                String? pickedTime = await showAvailableTimePicker(context, selectedDate!);
 
-              if (pickedTime != null) {
-                setState(() {
-                  selectedTime = pickedTime;
-                });
+                if (pickedTime != null) {
+                  setState(() {
+                    selectedTime = TimeOfDay(
+                        hour: int.parse(pickedTime.split(":")[0]),
+                        minute: int.parse(pickedTime.split(":")[1]));
+                  });
+                }
               }
             }
           },
@@ -253,6 +253,38 @@ class _BookingScreenState extends State<BookingScreen> {
   }
 
 
+  Future<String?> showAvailableTimePicker(BuildContext context, DateTime selectedDate) async {
+    List<String> availableTimes = await _db.getAvailableTimes(selectedDoctor!.id,selectedDate);
+
+    if (availableTimes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text("No available times for this day."),
+      ));
+      return null;
+    }
+
+    return await showDialog<String>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text("Select Available Time"),
+          content: SingleChildScrollView(
+            child: Column(
+              children: availableTimes.map((time) {
+                return ListTile(
+                  title: Text(time),
+                  onTap: () {
+                    Navigator.pop(context, time); // Return the selected time
+                  },
+                );
+              }).toList(),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   void _onItemTapped(int index) {
     setState(() {
       _selectedNavItem = index;
@@ -261,6 +293,7 @@ class _BookingScreenState extends State<BookingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    doctors = _db.getAllDoctors() as List<Doctor>?;
     currentUser = Provider.of<DatabaseAccess>(context).currentUser;
     final bundle = Provider.of<Localization>(context);
 
@@ -270,10 +303,10 @@ class _BookingScreenState extends State<BookingScreen> {
           return buildLocation(context, bundle);
           break;
         case 1:
-          return buildDateTime(context, bundle);
+          return buildDoctor(context, bundle);
           break;
         case 2:
-          return buildDoctor(context, bundle);
+          return buildDateTime(context, bundle);
           break;
       }
       return null;
@@ -638,22 +671,22 @@ class _BookingScreenState extends State<BookingScreen> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 SizedBox(width: 50,),
-                DropdownButton<String>(
+                DropdownButton<Doctor>(
                   value: selectedDoctor,
-                  onChanged: (String? doctor) {
+                  onChanged: (Doctor? doctor) {
                     setState(() {
                       selectedDoctor = doctor;
                     });
                   },
-                  items: doctors.map((String doctor) {
-                    return DropdownMenuItem<String>(
+                  items: doctors?.map((Doctor doctor) {
+                    return DropdownMenuItem<Doctor>(
                       value: doctor,
-                      child: Text(doctor),
+                      child: Text(doctor.doctor),
                     );
                   }).toList(),
                   hint: Text(
-                    '${bundle.translation('departmentTextField')}', // Hint text
-                    style: TextStyle(color: Colors.grey), // Style for the hint text
+                    '${bundle.translation('departmentTextField')}',
+                    style: TextStyle(color: Colors.grey),
                   ),
                 ),
               ],
@@ -763,7 +796,7 @@ class _BookingScreenState extends State<BookingScreen> {
                         date: selectedDate.toString(),
                         time: selectedTime.toString(),
                         location: '${addressController.text}, ${selectedProvince}',
-                        doctor: selectedDoctor,
+                        doctor: selectedDoctor?.doctor,
                         notifyBy: _notifyBy!.isNotEmpty ? _notifyBy : null,
                       )
                   );

@@ -49,6 +49,18 @@ class _AccountScreenState extends State<AccountScreen> {
     currentUser = Provider.of<DatabaseAccess>(context).currentUser;
     final bundle = Provider.of<Localization>(context);
 
+    void _showErrorMessage(BuildContext context, String message) {
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: Text("Profile Change Failed"),
+            content: Text(message),
+          );
+        },
+      );
+    }
+
     return Scaffold(
         appBar: AppBar(
           centerTitle: true,
@@ -196,7 +208,7 @@ class _AccountScreenState extends State<AccountScreen> {
                     children: [
                       SizedBox(width: 90),
                       Radio<String>(
-                        value: "phone",
+                        value: "${bundle.translation('phone')}",
                         groupValue: currentUser?.authentifyBy,
                         onChanged: (String? value) {
                           setState(() {
@@ -228,13 +240,13 @@ class _AccountScreenState extends State<AccountScreen> {
                               _genderController.text.isEmpty ||
                               _phoneNumberController.text.isEmpty) {
                             // Show a message or alert about missing fields
-                            print("Please fill in all fields.");
+                            _showErrorMessage(context, '${bundle.translation('missingField')}');
                             return;
                           }
 
                           // Validate the age is a valid number
                           if (int.tryParse(_ageController.text) == null) {
-                            print("Please enter a valid age.");
+                            print("Please enter a valid age");
                             return;
                           }
 
