@@ -40,6 +40,7 @@ class _AccountScreenState extends State<AccountScreen> {
         _ageController.text = currentUser!.age.toString();
         _genderController.text = currentUser!.gender;
         _phoneNumberController.text = currentUser!.phoneNumber;
+
       });
     }
   }

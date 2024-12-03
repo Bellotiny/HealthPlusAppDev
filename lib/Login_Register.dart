@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'Localization.dart';
 import 'AppointmentDatabase.dart';
 
+
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 

@@ -46,6 +46,7 @@ dependencies:
   http: any
   permission_handler: any
   geolocator: any
+  table_calendar: any
 
 
   # The following adds the Cupertino Icons font to your application.
