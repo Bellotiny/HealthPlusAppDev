@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'Localization.dart';
@@ -11,9 +10,10 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:table_calendar/table_calendar.dart';
 
 
-// Add geocoding package for reverse geocoding.
 class BookingScreen extends StatefulWidget {
   const BookingScreen({super.key});
 
@@ -25,34 +25,113 @@ class _BookingScreenState extends State<BookingScreen> {
   final DatabaseAccess _db = DatabaseAccess();
   TextEditingController addressController = TextEditingController();
   LatLng? _selectedLocation;
+  DateTime focusedDay = DateTime.now();
   String? _selectedAddress;
   LatLng _initialLocation = LatLng(45.5017, -73.5673);
-  int _selectedNavItem = 0;
+  int currentBookingIndex = 0;
   User? currentUser;
-  String? _notifyBy;
+  String? _notifyBy = "email";
+  String? selectedDay;
+  Map<String, dynamic>? selectedSlot;
   final String apiKey = "AIzaSyA5SRUdgp80WhwV7sVVwLa1wSbWNPwLQ5g";
   Set<Marker> hospitalMarkers = {};
-  final LatLng montrealCoordinates = LatLng(45.5017, -73.5673);
-
-  TextEditingController provinceController =TextEditingController();
-  int currentBookingIndex = 0;
-
-  List<String> provinces = ["Alberta", "British Columbia", "Manitoba", "New Brunswick", "Newfoundland and Labrador", "Northwest Territories",
-    "Nova Scotia", "Nunavut", "Ontario", "Prince Edward Island", "Québec", "Saskatchewan", "Yukon"];
-  String? selectedProvince;
-
-  List<Doctor>? doctors;
-  Doctor? selectedDoctor;
-
+  String? selectedSpecialty;
+  Map<String, dynamic>? selectedDoctor;
+  String? selectedSchedulePath;
+  List<Map<String, dynamic>> doctorsList = [];
+  List<String> specialties = [];
+  List<String> availableDays = [];
+  List<Map<String, dynamic>> availableSlots = [];
   DateTime? selectedDate;
   TimeOfDay? selectedTime;
+  String email="sendozamiracle@gmail.com";
+
   @override
   void initState() {
-    // TODO: implement initState
     super.initState();
     requestLocationPermission();
     _fetchCurrentLocation();
+    fetchCurrentUser(); // Fetch the current user
 
+  }
+  Future<void> updateSlotStatus(String schedulePath, String day, String time, String newStatus) async {
+    try {
+      DocumentReference scheduleRef = FirebaseFirestore.instance.doc(schedulePath);
+      DocumentSnapshot scheduleDoc = await scheduleRef.get();
+      Map<String, dynamic> scheduleData = scheduleDoc.data() as Map<String, dynamic>;
+
+      // Update the slot status
+      List slots = scheduleData['week'][day];
+      for (var slot in slots) {
+        if (slot['time'] == time) {
+          slot['status'] = newStatus;
+        }
+      }
+
+      // Save back to Firestore
+      await scheduleRef.update({'week': scheduleData['week']});
+      print("Slot updated to $newStatus: $time on $day");
+    } catch (e) {
+      print("Error updating slot status: $e");
+    }
+  }
+
+  Future<void> fetchCurrentUser() async {
+    // Fetch the current user
+    currentUser = await _db.currentUser;
+    if (currentUser != null) {
+      print("Current User Email: ${currentUser!.email}");
+    } else {
+      print("No user is logged in.");
+    }
+    setState(() {}); // Update the state to reflect the changes
+  }
+  List<String> getDatesForDays(List<String> daysOfWeek) {
+    DateTime now = DateTime.now();
+    List<String> availableDates = [];
+
+    // Iterate over the next 4 weeks
+    for (int i = 0; i < 14; i++) {
+      DateTime date = now.add(Duration(days: i));
+      String weekday = DateFormat('EEEE').format(date);
+
+      // Check if the day matches the doctor's schedule
+      if (daysOfWeek.contains(weekday)) {
+        availableDates.add(DateFormat('yyyy-MM-dd').format(date));
+      }
+    }
+    return availableDates;
+  }
+
+  Future<void> markSlotAsOccupied(String schedulePath, DateTime date, String time) async {
+    try {
+      String formattedDate = DateFormat('yyyy-MM-dd').format(date);
+      DocumentSnapshot scheduleDoc = await FirebaseFirestore.instance.doc(schedulePath).get();
+      Map<String, dynamic> scheduleData = scheduleDoc.data() as Map<String, dynamic>;
+
+      // Update the specific slot's status
+      List<dynamic> slots = scheduleData['week'][formattedDate];
+      int index = slots.indexWhere((slot) => slot['time'] == time);
+      if (index != -1) {
+        slots[index]['status'] = 'occupied';
+
+        // Save updated data to Firestore
+        await FirebaseFirestore.instance.doc(schedulePath).update({
+          'week.$formattedDate': slots,
+        });
+      }
+      print("Slot marked as occupied for $formattedDate at $time");
+    } catch (e) {
+      print("Error marking slot as occupied: $e");
+    }
+  }
+  Future<void> requestLocationPermission() async {
+    var status = await Permission.locationWhenInUse.request();
+    if (status.isGranted) {
+      await _fetchCurrentLocation();
+    } else {
+      openAppSettings();
+    }
   }
 
   Future<void> _fetchCurrentLocation() async {
@@ -64,47 +143,12 @@ class _BookingScreenState extends State<BookingScreen> {
         _initialLocation = LatLng(position.latitude, position.longitude);
       });
 
-      // Fetch hospitals after updating the location
       await _fetchHospitals();
     } catch (e) {
       print("Error fetching location: $e");
     }
   }
 
-
-  LatLng? _getNearestMarker() {
-    if (hospitalMarkers.isEmpty) return null;
-
-    Marker? nearestMarker;
-    double minDistance = double.infinity;
-
-    for (Marker marker in hospitalMarkers) {
-      double distance = Geolocator.distanceBetween(
-        _initialLocation.latitude,
-        _initialLocation.longitude,
-        marker.position.latitude,
-        marker.position.longitude,
-      );
-      if (distance < minDistance) {
-        minDistance = distance;
-        nearestMarker = marker;
-      }
-    }
-
-    return nearestMarker?.position;
-  }
-
-  Future<void> requestLocationPermission() async {
-    var status = await Permission.locationWhenInUse.request();
-    if (status.isGranted) {
-      print("Location permission granted");
-      await _fetchCurrentLocation();
-    } else if (status.isDenied || status.isPermanentlyDenied) {
-      print("Location permission denied");
-      // Show a dialog or redirect user to settings
-      openAppSettings();
-    }
-  }
   Future<void> _fetchHospitals() async {
     final String url =
         "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
@@ -113,7 +157,6 @@ class _BookingScreenState extends State<BookingScreen> {
 
     try {
       final response = await http.get(Uri.parse(url));
-
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         List results = data['results'];
@@ -129,59 +172,112 @@ class _BookingScreenState extends State<BookingScreen> {
             position: position,
             infoWindow: InfoWindow(
               title: hospital['name'],
-              snippet: hospital['vicinity'], // Address of the hospital
+              snippet: hospital['vicinity'],
             ),
             icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
+            onTap: () async {
+              await _getAddressFromCoordinates(position);
+              _fetchSpecialties(_selectedAddress!);
+            },
           );
         }).toSet();
 
         setState(() {
           hospitalMarkers = markers;
         });
-
-        print("Markers fetched: ${hospitalMarkers.length}");
-      } else {
-        print("Error fetching hospitals: ${response.statusCode}");
       }
     } catch (e) {
       print("Error fetching hospitals: $e");
     }
   }
 
+  Future<void> _fetchSpecialties(String hospitalName) async {
+    try {
+      QuerySnapshot querySnapshot = await FirebaseFirestore.instance
+          .collection('Doctors')
+          .where('hospital', isEqualTo: hospitalName)
+          .get();
 
-  void _openGoogleMap(BuildContext context) {
-    if (_initialLocation == null) {
-      // Show a loading spinner while waiting for the location
-      showDialog(
-        context: context,
-        builder: (context) => Center(child: CircularProgressIndicator()),
-      );
-    } else {
-      // Open the map once the location is fetched
-      showModalBottomSheet(
-        context: context,
-        builder: (BuildContext context) {
-          return Container(
-            height: MediaQuery.of(context).size.height * 0.8,
-            child: GoogleMap(
-              initialCameraPosition: CameraPosition(
-                target: _initialLocation, // Use updated current location
-                zoom: 12,
-              ),
-              myLocationEnabled: true,
-              scrollGesturesEnabled: true,
-              markers: hospitalMarkers, // Add hospital markers to the map
-              onTap: (LatLng location) async {
-                await _getAddressFromCoordinates(location);
-                Navigator.pop(context); // Close the modal after selecting a location
-              },
-            ),
-          );
-        },
-      );
+      Set<String> specialtySet = querySnapshot.docs
+          .map((doc) => doc['specialty'].toString())
+          .toSet();
+
+      setState(() {
+        specialties = specialtySet.toList();
+      });
+    } catch (e) {
+      print("Error fetching specialties: $e");
     }
   }
-  // Reverse geocode to get the address from coordinates
+
+  Future<void> _fetchDoctors(String specialty) async {
+    try {
+      QuerySnapshot querySnapshot = await FirebaseFirestore.instance
+          .collection('Doctors')
+          .where('hospital', isEqualTo: _selectedAddress)
+          .where('specialty', isEqualTo: specialty)
+          .get();
+
+      List<Map<String, dynamic>> doctors = querySnapshot.docs.map((doc) {
+        return {
+          "name": doc['doctor'],
+          "schedule": doc['schedule'],
+        };
+      }).toList();
+
+      setState(() {
+        doctorsList = doctors;
+      });
+    } catch (e) {
+      print("Error fetching doctors: $e");
+    }
+  }
+
+  Future<void> _fetchAvailableDays(String schedulePath) async {
+    try {
+      DocumentSnapshot scheduleDoc =
+      await FirebaseFirestore.instance.doc(schedulePath).get();
+
+      Map<String, dynamic> scheduleData = scheduleDoc.data() as Map<String, dynamic>;
+
+      // Extract the keys (day names) from the 'week' map
+      Map<String, dynamic> weekData = scheduleData['week'];
+      List<String> dayNames = weekData.keys.toList();
+
+      print("Day Names: $dayNames");
+
+      setState(() {
+        availableDays = getDatesForDays(dayNames);
+      });
+
+      print("Available Dates: $availableDays");
+    } catch (e) {
+      print("Error fetching available days: $e");
+    }
+  }
+
+  Future<void> _fetchAvailableSlots(String schedulePath, String selectedDay) async {
+    try {
+      DocumentSnapshot scheduleDoc =
+      await FirebaseFirestore.instance.doc(schedulePath).get();
+
+      Map<String, dynamic> scheduleData = scheduleDoc.data() as Map<String, dynamic>;
+      List<dynamic> slots = scheduleData['week'][selectedDay];
+
+      setState(() {
+        availableSlots = slots
+            .where((slot) => slot['status'] == 'available')
+            .map((slot) => {
+          "time": slot['time'],
+          "status": slot['status'],
+        })
+            .toList();
+      });
+    } catch (e) {
+      print("Error fetching available slots: $e");
+    }
+  }
+
   Future<void> _getAddressFromCoordinates(LatLng coordinates) async {
     try {
       List<Placemark> placemarks =
@@ -195,622 +291,243 @@ class _BookingScreenState extends State<BookingScreen> {
         });
       }
     } catch (e) {
-      setState(() {
-        addressController.text = "Unable to fetch address: $e";
-      });
+      addressController.text = "Unable to fetch address: $e";
     }
-  }
-
-  Widget buildDateTimePicker(BuildContext context, Localization bundle, String picker) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        if (picker == 'date' && selectedDate != null)
-          Text(
-            "${bundle.translation('selectedDate')} ${DateFormat('EEEE, MMMM d, yyyy').format(selectedDate!)}",
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-        if (picker == 'time' && selectedTime != null)
-          Text(
-            "${bundle.translation('selectedTime')} ${selectedTime!.format(context)}",
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-        SizedBox(height: 16),
-        ElevatedButton(
-          onPressed: () async {
-            if (picker == 'date') {
-              // Show the Material Date Picker
-              DateTime? pickedDate = await showDatePicker(
-                context: context,
-                initialDate: DateTime.now(),
-                firstDate: DateTime(2000, 1, 1),
-                lastDate: DateTime(2100, 12, 31),
-              );
-
-              if (pickedDate != null) {
-                setState(() {
-                  selectedDate = pickedDate;
-                });
-              }
-            } else {
-              if (selectedDate != null) {
-                String? pickedTime = await showAvailableTimePicker(context, selectedDate!);
-
-                if (pickedTime != null) {
-                  setState(() {
-                    selectedTime = TimeOfDay(
-                        hour: int.parse(pickedTime.split(":")[0]),
-                        minute: int.parse(pickedTime.split(":")[1]));
-                  });
-                }
-              }
-            }
-          },
-          child: picker == 'date' ? Text("${bundle.translation('pickDate')}") : Text("${bundle.translation('pickTime')}"),
-        ),
-      ],
-    );
-  }
-
-
-  Future<String?> showAvailableTimePicker(BuildContext context, DateTime selectedDate) async {
-    List<String> availableTimes = await _db.getAvailableTimes(selectedDoctor!.id,selectedDate);
-
-    if (availableTimes.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text("No available times for this day."),
-      ));
-      return null;
-    }
-
-    return await showDialog<String>(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text("Select Available Time"),
-          content: SingleChildScrollView(
-            child: Column(
-              children: availableTimes.map((time) {
-                return ListTile(
-                  title: Text(time),
-                  onTap: () {
-                    Navigator.pop(context, time); // Return the selected time
-                  },
-                );
-              }).toList(),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  void _onItemTapped(int index) {
-    setState(() {
-      _selectedNavItem = index;
-    });
   }
 
   @override
   Widget build(BuildContext context) {
-    doctors = _db.getAllDoctors() as List<Doctor>?;
-    currentUser = Provider.of<DatabaseAccess>(context).currentUser;
     final bundle = Provider.of<Localization>(context);
-
-    Widget? columnToDisplay(){
-      switch(currentBookingIndex){
-        case 0:
-          return buildLocation(context, bundle);
-          break;
-        case 1:
-          return buildDoctor(context, bundle);
-          break;
-        case 2:
-          return buildDateTime(context, bundle);
-          break;
-      }
-      return null;
-    }
 
     return Scaffold(
       appBar: AppBar(
-        centerTitle: true,
-        title: Text('Health +',style: TextStyle(fontSize: 24),),
-        leading: IconButton(
-          icon: Icon(Icons.settings,size: 30,), // Left icon
-          onPressed: () {
-            Navigator.pushNamed(
-              context,
-              '/settings',
-            );
-          },
-        ),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.person,size: 30,), // Right icon
-            onPressed: () {
-              Navigator.pushNamed(
-                context,
-                '/account',
-              );
-            },
+        title: Text('Health +'),
+      ),
+      body: currentBookingIndex == 0
+          ? buildLocation(context, bundle)
+          : currentBookingIndex == 1
+          ? buildDoctor(context, bundle)
+          : buildDateTime(context, bundle),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: currentBookingIndex,
+        onTap: (index) {
+          setState(() {
+            currentBookingIndex = index;
+          });
+        },
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.location_on),
+            label: 'Location',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person),
+            label: 'Doctor',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.calendar_today),
+            label: 'Schedule',
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        child: Center(
-          child: Padding(
-              padding: EdgeInsets.all(16.0),
-              child: columnToDisplay()
-          ),
-        ),
-      ),
-      bottomNavigationBar: CustomBottomNavBar(
-        selectedNavItem: _selectedNavItem,
-        onItemTapped: _onItemTapped,
-      ),
     );
   }
 
-  Column buildLocation(BuildContext context, Localization bundle) {
+  Widget buildLocation(BuildContext context, Localization bundle) {
     return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        SizedBox(height: 10,),
-        Container(
-          width: 300,
-          height: 70,
-          decoration: const BoxDecoration(
-            color: Color(0xFF529DFF),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.blueAccent,
-                blurRadius: 4,
-                offset: Offset(0, 4),
-                spreadRadius: 0,
-              ),
-            ],
-          ),
-          child: Center(
-            child: Text(
-              '${bundle.translation('scheduleTitle')}',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: bundle.currentLanguage == 'EN' ? 26:18,
-                fontWeight: FontWeight.bold,
-              ),
+        Expanded(
+          child: GoogleMap(
+            initialCameraPosition: CameraPosition(
+              target: _initialLocation,
+              zoom: 12,
             ),
+            markers: hospitalMarkers,
           ),
         ),
-        SizedBox(height: 45,),
-        Container(
-          padding: EdgeInsets.only(left: 40, right: 40),
-          child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                padding: EdgeInsets.symmetric(horizontal: 28, vertical: 16),
-                backgroundColor: Colors.white54,
-              ),
-              onPressed: ()=>_openGoogleMap(context),
-              child: Text('${bundle.translation('pickLocation')}')
-          ),
-
-        ),
-
-        SizedBox(height: 30,),
-        Container(
-            padding: EdgeInsets.only(left: 20, right: 20),
-            child: Text('${bundle.translation('or')}',style: TextStyle(fontSize: 24),)
-        ),
-        SizedBox(height: 30,),
-        Container(
-            padding: EdgeInsets.only(left: 40, right: 40),
-            child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  padding: EdgeInsets.symmetric(horizontal: 28, vertical: 16),
-                  backgroundColor: Colors.white54,
-                ),
-                onPressed: () async {
-                  LatLng? nearestLocation = _getNearestMarker();
-                  if (nearestLocation != null) {
-                    await _getAddressFromCoordinates(nearestLocation);
-                  }
-                },
-                child: Text('${bundle.translation('pickNearest')}')
-            )
-        ),
-        SizedBox(height: 40,),
-        Container(
-            padding: EdgeInsets.only(left: 20, right: 20),
-            child: TextField(
-              controller: addressController,
-              decoration: InputDecoration(
-                labelText: "${bundle.translation('address')}", // The label text on top
-                hintText: "E.g. 111 rue AppDev, Vanier", // Example text inside the box
-                border: OutlineInputBorder(), // Full border around the TextField
-                floatingLabelBehavior: FloatingLabelBehavior.always,
-              ),
-            )
-        ),
-        SizedBox(height: 40,),
-        Container(
-          padding: EdgeInsets.only(right: 230),
-          child: Text(
-            "${bundle.translation('province')}",
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-        SizedBox(height: 4),
         Padding(
-          padding: EdgeInsets.only(left: 20, right: 20),
-          child: Container(
-            decoration: BoxDecoration(
-              border: Border.all(
-                color: Colors.grey, // Border color
-                width: 1.0, // Border width
-              ),
-              borderRadius: BorderRadius.circular(8.0), // Rounded corners
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                SizedBox(width: 50,),
-                DropdownButton<String>(
-                  value: selectedProvince,
-                  onChanged: (String? province) {
-                    setState(() {
-                      selectedProvince = province;
-                    });
-                  },
-                  items: provinces.map((String province) {
-                    return DropdownMenuItem<String>(
-                      value: province,
-                      child: Text(province),
-                    );
-                  }).toList(),
-                  hint: Text(
-                    '${bundle.translation('provinceTextField')}', // Hint text
-                    style: TextStyle(color: Colors.grey), // Style for the hint text
-                  ),
-                ),
-              ],
+          padding: const EdgeInsets.all(16.0),
+          child: TextField(
+            controller: addressController,
+            readOnly: true,
+            decoration: InputDecoration(
+              labelText: "Selected Location",
+              border: OutlineInputBorder(),
             ),
           ),
         ),
-        SizedBox(height: 20,),
-        Padding(
-          padding: EdgeInsets.all(20.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  backgroundColor: Colors.blueAccent,
-                  foregroundColor: Colors.white,
-                ),
-                onPressed: () {
-                  Navigator.of(context).pop();
-                },
-                child: Text("${bundle.translation('cancel')}"),
-              ),
-              ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                    backgroundColor: Colors.blueAccent,
-                    foregroundColor: Colors.white,
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      currentBookingIndex = 1;
-                    });
-                  },
-                  child: Text("${bundle.translation('next')}")
-              ),
-            ],
-          ),
+        ElevatedButton(
+          onPressed: _selectedAddress != null
+              ? () {
+            setState(() {
+              currentBookingIndex = 1;
+            });
+          }
+              : null,
+          child: Text("Next"),
         ),
       ],
     );
   }
 
-  Column buildDateTime(BuildContext context, Localization bundle) {
+  Widget buildDoctor(BuildContext context, Localization bundle) {
     return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        SizedBox(height: 10,),
-        Container(
-          width: 300,
-          height: 70,
-          decoration: const BoxDecoration(
-            color: Color(0xFF529DFF),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.blueAccent,
-                blurRadius: 4,
-                offset: Offset(0, 4),
-                spreadRadius: 0,
-              ),
-            ],
-          ),
-          child: Center(
-            child: Text(
-              '${bundle.translation('scheduleTitle')}',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: bundle.currentLanguage == 'EN' ? 26:18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
+        Text("Select Specialty"),
+        DropdownButton<String>(
+          value: selectedSpecialty,
+          items: specialties.map((specialty) {
+            return DropdownMenuItem(
+              value: specialty,
+              child: Text(specialty),
+            );
+          }).toList(),
+          onChanged: (value) {
+            setState(() {
+              selectedSpecialty = value;
+              doctorsList = [];
+              selectedDoctor = null; // Reset the doctor when specialty changes
+              print("Selected Specialty: $selectedSpecialty");
+              _fetchDoctors(value!);
+            });
+          },
         ),
-        SizedBox(height: 70,),
-        Container(
-          child: buildDateTimePicker(context,bundle,'date'),
-        ),
-        SizedBox(height: 90,),
-        Container(
-          child: buildDateTimePicker(context,bundle,'time'),
-        ),
-        SizedBox(height: 100,),
-        Padding(
-          padding: EdgeInsets.all(20.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  backgroundColor: Colors.blueAccent,
-                  foregroundColor: Colors.white,
-                ),
-                onPressed: () {
-                  setState(() {
-                    currentBookingIndex = 0;
-                  });
-                },
-                child: Text("${bundle.translation('back')}"),
-              ),
-              ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                    backgroundColor: Colors.blueAccent,
-                    foregroundColor: Colors.white,
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      currentBookingIndex = 2;
-                    });
-                  },
-                  child: Text("${bundle.translation('next')}")
-              ),
-            ],
+        if (doctorsList.isNotEmpty) ...[
+          Text("Select Doctor"),
+          DropdownButton<Map<String, dynamic>>(
+            value: selectedDoctor,
+            items: doctorsList.map((doctor) {
+              return DropdownMenuItem(
+                value: doctor,
+                child: Text(doctor['name']),
+              );
+            }).toList(),
+            onChanged: (value) {
+              setState(() {
+                selectedDoctor = value;
+                // Ensure selectedSchedulePath is extracted correctly
+                selectedSchedulePath = (value?['schedule'] as DocumentReference).path;
+                print("Selected Doctor: ${selectedDoctor?['name']}");
+                print("Selected Schedule Path: $selectedSchedulePath");
+              });
+            },
           ),
+        ],
+        ElevatedButton(
+          onPressed: selectedDoctor != null
+              ? () {
+            setState(() {
+              currentBookingIndex = 2;
+            });
+            _fetchAvailableDays(selectedSchedulePath!);
+          }
+              : null,
+          child: Text("Next"),
         ),
       ],
     );
   }
 
-  Column buildDoctor(BuildContext context, Localization bundle) {
+
+  Widget buildDateTime(BuildContext context, Localization bundle) {
     return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        SizedBox(height: 10,),
-        Container(
-          width: 300,
-          height: 70,
-          decoration: const BoxDecoration(
-            color: Color(0xFF529DFF),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.blueAccent,
-                blurRadius: 4,
-                offset: Offset(0, 4),
-                spreadRadius: 0,
-              ),
-            ],
-          ),
-          child: Center(
-            child: Text(
-              '${bundle.translation('scheduleTitle')}',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: bundle.currentLanguage == 'EN' ? 26:18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ),
-        SizedBox(height: 45,),
-        Container(
-          padding: EdgeInsets.only(right: 230),
-          child: Text(
-            "${bundle.translation('department')}",
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-        SizedBox(height: 4),
-        SizedBox(height: 8,),
-        Padding(
-          padding: EdgeInsets.only(left: 20, right: 20),
-          child: Container(
-            decoration: BoxDecoration(
-              border: Border.all(
-                color: Colors.grey, // Border color
-                width: 1.0, // Border width
-              ),
-              borderRadius: BorderRadius.circular(8.0), // Rounded corners
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                SizedBox(width: 50,),
-                DropdownButton<Doctor>(
-                  value: selectedDoctor,
-                  onChanged: (Doctor? doctor) {
-                    setState(() {
-                      selectedDoctor = doctor;
-                    });
-                  },
-                  items: doctors?.map((Doctor doctor) {
-                    return DropdownMenuItem<Doctor>(
-                      value: doctor,
-                      child: Text(doctor.doctor),
-                    );
-                  }).toList(),
-                  hint: Text(
-                    '${bundle.translation('departmentTextField')}',
-                    style: TextStyle(color: Colors.grey),
+        TableCalendar(
+          firstDay: DateTime.now(),
+          lastDay: DateTime.now().add(Duration(days: 14)),
+          focusedDay: selectedDate ?? DateTime.now(),
+          calendarFormat: CalendarFormat.month,
+          calendarBuilders: CalendarBuilders(
+            defaultBuilder: (context, day, focusedDay) {
+              String formattedDay = DateFormat('EEEE').format(day);
+              bool isAvailable = availableDays.contains(formattedDay);
+
+              return Center(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isAvailable ? Colors.green : Colors.grey[300],
+                    shape: BoxShape.circle,
+                  ),
+                  child: Text(
+                    '${day.day}',
+                    style: TextStyle(
+                      color: isAvailable ? Colors.white : Colors.black,
+                    ),
                   ),
                 ),
-              ],
-            ),
+              );
+            },
           ),
+          selectedDayPredicate: (day) => selectedDate != null && isSameDay(day, selectedDate),
+          onDaySelected: (selectedDay, focusedDay) {
+            String selectedDayName = DateFormat('EEEE').format(selectedDay);
+            print("Selected day: $selectedDayName");
+            if (availableDays.contains(selectedDayName)) {
+              setState(() {
+                selectedDate = selectedDay;
+                this.focusedDay = focusedDay;
+                _fetchAvailableSlots(selectedSchedulePath!, selectedDayName);
+              });
+            }
+          },
         ),
-        SizedBox(height: 40,),
-        Padding(
-          padding: EdgeInsets.only(left: 20.0,right: 20.0),
-          child: Container(
-            decoration: BoxDecoration(
-              border: Border.all(
-                color: Colors.blueAccent, // Border color
-                width: 2, // Border width
-              ),
-              borderRadius: BorderRadius.circular(12), // Optional: for rounded corners
-            ),
-            padding: EdgeInsets.all(5),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                SizedBox(height: 10,),
-                Text("${bundle.translation('notification')}"),
-                SizedBox(height: 20,),
-                Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      children: [
-                        SizedBox(width: 90,),
-                        Radio<String>(
-                          value: "",
-                          groupValue: _notifyBy,
-                          onChanged: (String? value) {
-                            setState(() {
-                              _notifyBy = value;
-                            });
-                          },
-                        ),
-                        Text("${bundle.translation('email')}"),
-                      ],
-                    ),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      children: [
-                        SizedBox(width: 90,),
-                        Radio<String>(
-                          value: "${bundle.translation('phone')}",
-                          groupValue: _notifyBy,
-                          onChanged: (String? value) {
-                            setState(() {
-                              _notifyBy = value;
-                            });
-                          },
-                        ),
-                        Text("${bundle.translation('phone')}"),
-                      ],
-                    ),
-                  ],
-                ),
-              ],
-            ),
+        if (availableSlots.isNotEmpty)
+          DropdownButton<Map<String, dynamic>>(
+            value: selectedSlot,
+            items: availableSlots.map((slot) {
+              return DropdownMenuItem(
+                value: slot,
+                child: Text(slot['time']),
+              );
+            }).toList(),
+            onChanged: (value) {
+              setState(() {
+                selectedSlot = value;
+              });
+            },
           ),
-        ),
-        SizedBox(height: 20,),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Padding(
-              padding: EdgeInsets.only(left: 20),
-              child: Container(
-                width: 140, // Specify the width of the button here
-                child: Padding(
-                  padding: EdgeInsets.only(right: 20),
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                      backgroundColor: Colors.blueAccent,
-                      foregroundColor: Colors.white,
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        currentBookingIndex = 1;
-                      });
-                    },
-                    child: Text("${bundle.translation('back')}"),
-                  ),
+
+        // Book Appointment Button
+        ElevatedButton(
+          onPressed: (selectedSlot != null &&
+              selectedDate != null &&
+              _selectedAddress != null &&
+              selectedDoctor != null &&
+              currentUser != null)
+              ? () {
+            // Log the variables before booking
+            print("Booking Details:");
+            print("Selected Date: ${DateFormat('yyyy-MM-dd').format(selectedDate!)}");
+            print("Selected Slot: ${selectedSlot?['time']}");
+            print("Selected Address: $_selectedAddress");
+            print("Selected Doctor: ${selectedDoctor?['name']}");
+            print("Current User Email: ${currentUser?.email}");
+            print("Notify By: $_notifyBy");
+
+            try {
+              // Add the appointment
+              _db.addAppointment(
+                Appointment(
+                  email: currentUser!.email,
+                  date: DateFormat('yyyy-MM-dd').format(selectedDate!),
+                  time: selectedSlot!['time'],
+                  location: _selectedAddress!,
+                  doctor: selectedDoctor!['name'],
+                  notifyBy: _notifyBy ?? "default",
                 ),
-              ),
-            ),
-            ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  padding: EdgeInsets.symmetric(horizontal: bundle.currentLanguage == 'EN' ? 24:28, vertical: 12),
-                  backgroundColor: Colors.blueAccent,
-                  foregroundColor: Colors.white,
-                ),
-                onPressed: () {
-                  _db.addAppointment(
-                      Appointment(
-                        email: currentUser!.email,
-                        date: selectedDate.toString(),
-                        time: selectedTime.toString(),
-                        location: '${addressController.text}, ${selectedProvince}',
-                        doctor: selectedDoctor?.doctor,
-                        notifyBy: _notifyBy!.isNotEmpty ? _notifyBy : null,
-                      )
-                  );
-                  Navigator.pushNamed(
-                    context,
-                    '/main',
-                  );
-                },
-                child: Text("${bundle.translation('book')}",style: TextStyle(fontSize: bundle.currentLanguage == 'EN' ? 12:10),)
-            ),
-          ],
+              );
+
+              // Mark slot as occupied
+              markSlotAsOccupied(selectedSchedulePath!, selectedDate!, selectedSlot!['time']);
+
+              Navigator.pushNamed(context, '/main');
+            } catch (e) {
+              print("Error booking appointment: $e");
+            }
+          }
+              : null,
+          child: Text("Book Appointment"),
         ),
       ],
     );
-  }
-}
-
+  }}

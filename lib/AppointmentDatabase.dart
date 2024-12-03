@@ -303,10 +303,24 @@ class DatabaseAccess with ChangeNotifier {
           .get();
 
       if (doc.exists) {
-        return Doctor.fromMap({
-          'id': doc.id,  // Add the document ID into the map
-          ...doc.data() as Map<String, dynamic>  // Add the other data fields
-        });
+        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+        data['id'] = doc.id;
+
+        // Handle the schedule field if it's a DocumentReference
+        if (data['schedule'] is DocumentReference) {
+          DocumentReference scheduleRef = data['schedule'];
+          DocumentSnapshot scheduleDoc = await scheduleRef.get();
+
+          // Merge the fetched schedule data with the doctor data
+          if (scheduleDoc.exists) {
+            data['schedule'] = scheduleDoc.data();
+          } else {
+            print('Schedule for Doctor ID $doctorId not found.');
+          }
+        }
+
+        print('${Doctor.fromMap(data).toString()} was found');
+        return Doctor.fromMap(data);
       } else {
         print('Doctor with ID $doctorId not found.');
         return null;
@@ -317,19 +331,31 @@ class DatabaseAccess with ChangeNotifier {
     }
   }
 
-
-  Future<List<Doctor>> getAllDoctors() async {
+  Future<List<Doctor>?> getAllDoctors() async {
     try {
       QuerySnapshot snapshot = await FirebaseFirestore.instance
           .collection('Doctors')
           .get();
 
-      List<Doctor> doctors = snapshot.docs.map((doc) {
-        return Doctor.fromMap({
-          'id': doc.id,
-          ...doc.data() as Map<String, dynamic>,
-        });
-      }).toList();
+      List<Doctor> doctors = [];
+      for (var doc in snapshot.docs) {
+        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+        data['id'] = doc.id;
+
+        if (data['schedule'] is DocumentReference) {
+          DocumentReference scheduleRef = data['schedule'];
+          DocumentSnapshot scheduleDoc = await scheduleRef.get();
+
+          if (scheduleDoc.exists) {
+            print('Schedule for Doctor ID ${doc.id}');
+            data['schedule'] = scheduleDoc.data();
+          } else {
+            print('Schedule for Doctor ID ${doc.id} not found.');
+          }
+        }
+
+        doctors.add(Doctor.fromMap(data));
+      }
 
       return doctors;
     } catch (e) {
@@ -337,7 +363,6 @@ class DatabaseAccess with ChangeNotifier {
       return [];
     }
   }
-
 
   Future<List<Schedule>?> getDoctorSchedule(String doctorId) async {
     Doctor? doctor = await getDoctor(doctorId);
@@ -371,13 +396,16 @@ class DatabaseAccess with ChangeNotifier {
             }
           }
 
+          // Convert the schedule back to a Map and update Firestore
+          List<Map<String, dynamic>> updatedSchedule = doctor.schedule
+              .map((schedule) => schedule.toMap())
+              .toList();
+
           await FirebaseFirestore.instance
               .collection('Doctors')
               .doc(doctorId)
               .update({
-            'schedule': doctor.schedule
-                .map((schedule) => schedule.toMap())
-                .toList(),
+            'schedule': updatedSchedule,
           });
 
           print("Time slot status updated successfully for Doctor ID: $doctorId");
@@ -392,31 +420,41 @@ class DatabaseAccess with ChangeNotifier {
     }
   }
 
-  Future<List<String>> getAvailableTimes(String? doctorId,DateTime selectedDate) async {
+  Future<List<String>> getAvailableTimes(String? doctorId, DateTime selectedDate) async {
     int weekday = selectedDate.weekday;
 
+    // Fetch the doctor object
     Doctor? doctor = await getDoctor(doctorId!);
     if (doctor == null) {
+      print("Doctor not found.");
       return [];
     }
 
-    Map<String, dynamic> schedule = doctor.schedule as Map<String, dynamic>;
-
     String dayOfWeek = _getDayStringFromWeekday(weekday);
+    print("Fetching available times for: $dayOfWeek");
 
-    if (schedule.containsKey(dayOfWeek)) {
-      List<dynamic> timeSlots = schedule[dayOfWeek]['timeSlots'] ?? [];
+    for (var schedule in doctor.schedule) {
+      if (schedule.day == dayOfWeek) {
+        if (schedule.timeSlots != null) {
+          List<String> availableTimes = schedule.timeSlots
+              .where((slot) => slot.status == 'available')
+              .map<String>((slot) => slot.timeRange)
+              .toList();
 
-      List<String> availableTimes = timeSlots
-          .where((slot) => slot['status'] == 'available')
-          .map<String>((slot) => slot['time'])
-          .toList();
-
-      return availableTimes;
+          print("Available times for $dayOfWeek: $availableTimes");
+          return availableTimes;
+        } else {
+          print("No time slots available for $dayOfWeek.");
+          return [];
+        }
+      }
     }
 
+    print("No schedule found for $dayOfWeek.");
     return [];
   }
+
+
 
   String _getDayStringFromWeekday(int weekday) {
     switch (weekday) {
@@ -709,71 +747,116 @@ class Appointment {
 
 class Doctor {
   String? id;
-  String doctor;
-  String specialty;
-  List<Schedule> schedule;
+  final String name;
+  final String specialty;
+  final List<Schedule> schedule;
 
   Doctor({
     this.id,
-    required this.doctor,
+    required this.name,
     required this.specialty,
     required this.schedule,
   });
 
-  factory Doctor.fromMap(Map<String, dynamic> map) {
+  factory Doctor.fromMap(Map<String, dynamic> data) {
+    List<Schedule> scheduleList = [];
+
+    if (data['schedule'] != null) {
+      Map<String, dynamic> scheduleData = data['schedule'] as Map<String, dynamic>;
+
+      // Iterate through each day and time slots
+      scheduleData.forEach((day, timeSlots) {
+        // Pass the day and timeSlots as a Map to Schedule.fromMap
+        scheduleList.add(Schedule.fromMap({
+          'day': day,
+          'timeSlots': timeSlots,
+        }));
+      });
+    }
+
     return Doctor(
-      id: map['id'],
-      doctor: map['doctor'] ?? '',
-      specialty: map['specialty'] ?? '',
-      schedule: map['schedule'] ?? {},
+      id: data['id'],
+      name: data['doctor'],
+      specialty: data['specialty'],
+      schedule: scheduleList,
     );
   }
 
-  Map<String, dynamic> toMap() {
-    return {
-      'doctor': doctor,
-      'specialty': specialty,
-      'schedule': {
-        for (var s in schedule) s.day: s.toMap(),
-      },
-    };
+  @override
+  String toString() {
+    return 'Doctor{id: $id, name: $name, specialty: $specialty, schedule: $schedule}';
   }
 }
 
 class Schedule {
-  String day;
-  List<TimeSlot> timeSlots;
+  final String day;
+  final List<Slot> timeSlots;
 
-  Schedule({required this.day, required this.timeSlots});
+  Schedule({
+    required this.day,
+    required this.timeSlots,
+  });
 
-  Schedule.fromMap(String day, List<Map<String, dynamic>> rawSlots)
-      : day = day,
-        timeSlots = rawSlots.map((slot) => TimeSlot.fromMap(slot)).toList();
+  factory Schedule.fromMap(Map<String, dynamic> data) {
+    List<Slot> timeSlots = [];
 
-  Map<String, dynamic> toMap() {
-    return {
-      'timeSlots': timeSlots.map((slot) => slot.toMap()).toList(),
-    };
-  }
-}
+    if (data['timeSlots'] != null) {
+      // If timeSlots is a map, convert it into a list of Slot objects
+      if (data['timeSlots'] is Map) {
+        Map<String, dynamic> timeSlotsData = data['timeSlots'] as Map<String, dynamic>;
+        timeSlotsData.forEach((key, value) {
+          timeSlots.add(Slot.fromMap(value));  // Assuming the value is the slot data
+        });
+      } else if (data['timeSlots'] is List) {
+        // If it's already a list, map it to Slot objects
+        timeSlots = (data['timeSlots'] as List).map((slotData) => Slot.fromMap(slotData)).toList();
+      } else {
+        print('Warning: TimeSlots data is not in a recognized format.');
+      }
+    }
 
-class TimeSlot {
-  String timeRange;
-  String status;
-
-  TimeSlot({required this.timeRange, required this.status});
-
-  factory TimeSlot.fromMap(Map<String, dynamic> raw) {
-    return TimeSlot(
-      timeRange: raw['timeRange'] ?? '',
-      status: raw['status'] ?? 'available',
+    return Schedule(
+      day: data['day'],
+      timeSlots: timeSlots,
     );
   }
 
   Map<String, dynamic> toMap() {
     return {
-      'timeRange': timeRange,
+      'day': day,
+      'timeSlots': timeSlots.map((slot) => slot.toMap()).toList(),
+    };
+  }
+
+  @override
+  String toString() {
+    return 'Schedule{day: $day, timeSlots: $timeSlots}';
+  }
+}
+
+
+class Slot {
+  final String timeRange;
+  String status;
+
+  Slot({
+    required this.timeRange,
+    required this.status,
+  });
+
+  factory Slot.fromMap(Map<String, dynamic> data) {
+    return Slot(
+      timeRange: data['time'] ?? '',  // Adjust based on your field names
+      status: data['status'] ?? 'available',  // Default to 'available' if missing
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'time': timeRange,
       'status': status,
     };
   }
+
+
 }
