@@ -43,7 +43,6 @@ class _BookingScreenState extends State<BookingScreen> {
   List<Map<String, dynamic>> availableSlots = [];
   DateTime? selectedDate;
   TimeOfDay? selectedTime;
-  String email="sendozamiracle@gmail.com";
 
   @override
   void initState() {
@@ -390,57 +389,82 @@ class _BookingScreenState extends State<BookingScreen> {
 
   Widget buildDoctor(BuildContext context, Localization bundle) {
     return Column(
+      mainAxisAlignment: MainAxisAlignment.center, // Centers vertically
+      crossAxisAlignment: CrossAxisAlignment.center, // Centers horizontally
       children: [
-        Text("Select Specialty"),
-        DropdownButton<String>(
-          value: selectedSpecialty,
-          items: specialties.map((specialty) {
-            return DropdownMenuItem(
-              value: specialty,
-              child: Text(specialty),
-            );
-          }).toList(),
-          onChanged: (value) {
-            setState(() {
-              selectedSpecialty = value;
-              doctorsList = [];
-              selectedDoctor = null; // Reset the doctor when specialty changes
-              print("Selected Specialty: $selectedSpecialty");
-              _fetchDoctors(value!);
-            });
-          },
+        // Specialty Dropdown
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Text(
+            "Select Specialty",
+            style: TextStyle(fontSize: 40, fontWeight: FontWeight.bold),
+          ),
         ),
-        if (doctorsList.isNotEmpty) ...[
-          Text("Select Doctor"),
-          DropdownButton<Map<String, dynamic>>(
-            value: selectedDoctor,
-            items: doctorsList.map((doctor) {
+        Center(
+          child: DropdownButton<String>(
+            value: selectedSpecialty,
+            items: specialties.map((specialty) {
               return DropdownMenuItem(
-                value: doctor,
-                child: Text(doctor['name']),
+                value: specialty,
+                child: Text(specialty, style: TextStyle(fontSize: 25)),
               );
             }).toList(),
             onChanged: (value) {
               setState(() {
-                selectedDoctor = value;
-                selectedSchedulePath = (value?['schedule'] as DocumentReference).path;
-                print("Selected Doctor: ${selectedDoctor?['name']}");
-                _fetchAvailableDays(selectedSchedulePath!); // Fetch the days after selecting a doctor
+                selectedSpecialty = value;
+                doctorsList = [];
+                selectedDoctor = null; // Reset the doctor when specialty changes
+                print("Selected Specialty: $selectedSpecialty");
+                _fetchDoctors(value!);
               });
             },
           ),
+        ),
 
-        ],
-        ElevatedButton(
-          onPressed: selectedDoctor != null
-              ? () {
-            setState(() {
-              currentBookingIndex = 2;
-            });
-            _fetchAvailableDays(selectedSchedulePath!);
-          }
-              : null,
-          child: Text("Next"),
+        // Doctor Dropdown (if doctors are available)
+        if (doctorsList.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16.0),
+            child: Text(
+              "Select Doctor",
+              style: TextStyle(fontSize: 40, fontWeight: FontWeight.bold),
+            ),
+          ),
+        if (doctorsList.isNotEmpty)
+          Center(
+            child: DropdownButton<Map<String, dynamic>>(
+              value: selectedDoctor,
+              items: doctorsList.map((doctor) {
+                return DropdownMenuItem(
+                  value: doctor,
+                  child: Text(doctor['name'], style: TextStyle(fontSize: 25)),
+                );
+              }).toList(),
+              onChanged: (value) {
+                setState(() {
+                  selectedDoctor = value;
+                  selectedSchedulePath = (value?['schedule'] as DocumentReference).path;
+                  print("Selected Doctor: ${selectedDoctor?['name']}");
+                  print("Selected Schedule Path: $selectedSchedulePath");
+                });
+              },
+            ),
+          ),
+
+        // Next Button
+        Padding(
+          padding: const EdgeInsets.only(top: 24.0),
+          child: ElevatedButton(
+            onPressed: selectedDoctor != null
+                ? () {
+              setState(() {
+                currentBookingIndex = 2;
+              });
+              _fetchAvailableDays(selectedSchedulePath!);
+            }
+                : null,
+            child: Text("Next"),
+          ),
         ),
       ],
     );

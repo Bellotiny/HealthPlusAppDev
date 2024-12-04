@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'Localization.dart';
 import 'AppointmentDatabase.dart';
-import 'SettingsControl.dart';
-import 'package:intl/intl.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:table_calendar/table_calendar.dart';
 
 class ModifyScreen extends StatefulWidget {
   final Appointment appointment;
@@ -11,416 +13,229 @@ class ModifyScreen extends StatefulWidget {
   const ModifyScreen({Key? key, required this.appointment}) : super(key: key);
 
   @override
-  State<ModifyScreen> createState() => _ModifyScreenState();
+  _ModifyScreenState createState() => _ModifyScreenState();
 }
 
 class _ModifyScreenState extends State<ModifyScreen> {
-  int currentStep = 0;
-  int _selectedNavItem = 1;
-  late TextEditingController locationController;
-  late TextEditingController doctorController;
-  List<String> doctors = ["Dr. Peter Griffin", "Dr. Megan Fox", "Dr. Freddy Fasbear", "Dr. Bitton Makitten"];
-  String? selectedDoctor;
+  TextEditingController addressController = TextEditingController();
+  Map<String, dynamic>? selectedDoctor;
+  String? selectedSchedulePath;
   DateTime? selectedDate;
-  TimeOfDay? selectedTime;
+  String? selectedSlot;
+  List<String> availableDays = [];
+  List<Map<String, dynamic>> availableSlots = [];
+  LatLng _initialLocation = LatLng(45.5017, -73.5673);
 
   @override
   void initState() {
     super.initState();
 
-    // Initialize controllers with current appointment data
-    locationController = TextEditingController(text: widget.appointment.location);
-    doctorController = TextEditingController(text: widget.appointment.doctor ?? '');
+    // Pre-fill fields from the appointment
+    addressController.text = widget.appointment.location;
+    selectedSlot = widget.appointment.time;
 
-    // Correct the date format to 'yyyy-MM-dd' for parsing
-    final dateFormat = DateFormat('yyyy-MM-dd');
     try {
-      selectedDate = dateFormat.parse(widget.appointment.date);
+      selectedDate = DateFormat('yyyy-MM-dd').parse(widget.appointment.date);
     } catch (e) {
-      print('Error parsing date: $e');
-      selectedDate = DateTime.now(); // Fallback to current date if parsing fails
+      print('Error parsing date: ${widget.appointment.date}');
+      selectedDate = DateTime.now();
     }
 
-    // Parse appointment time
+    if (widget.appointment.doctor != null) {
+      _fetchDoctorSchedule(widget.appointment.doctor!);
+    }
+  }
+
+  Future<void> _fetchDoctorSchedule(String doctorName) async {
     try {
-      final timeParts = widget.appointment.time.split(":");
-      selectedTime = TimeOfDay(
-        hour: int.parse(timeParts[0]),
-        minute: int.parse(timeParts[1]),
+      // Fetch the doctor's details (including schedule) from Firestore
+      QuerySnapshot querySnapshot = await FirebaseFirestore.instance
+          .collection('Doctors')
+          .where('doctor', isEqualTo: doctorName)
+          .get();
+
+      if (querySnapshot.docs.isNotEmpty) {
+        final doctorData = querySnapshot.docs.first;
+        final scheduleReference = doctorData['schedule'] as DocumentReference;
+
+        // Fetch the schedule details using the schedule reference
+        await _fetchScheduleDetails(scheduleReference.id);
+
+        setState(() {
+          selectedDoctor = {
+            "name": doctorName,
+            "schedule": scheduleReference.id,
+          };
+        });
+      } else {
+        print("No schedule found for doctor: $doctorName");
+      }
+    } catch (e) {
+      print("Error fetching doctor schedule: $e");
+    }
+  }
+
+  Future<void> _fetchScheduleDetails(String scheduleName) async {
+    try {
+      // Fetch the schedule details from Firestore
+      DocumentSnapshot scheduleDoc = await FirebaseFirestore.instance
+          .collection('Schedules')
+          .doc(scheduleName)
+          .get();
+
+      if (scheduleDoc.exists) {
+        Map<String, dynamic> scheduleData =
+        scheduleDoc.data() as Map<String, dynamic>;
+
+        // Extract available days and slots
+        setState(() {
+          availableDays = scheduleData['week'].keys.toList();
+        });
+
+        // Fetch slots for the first available day (optional)
+        if (availableDays.isNotEmpty) {
+          _fetchAvailableSlots(scheduleName, availableDays.first);
+        }
+      } else {
+        print("Schedule document not found: $scheduleName");
+      }
+    } catch (e) {
+      print("Error fetching schedule details: $e");
+    }
+  }
+
+  Future<void> _fetchAvailableSlots(String scheduleName, String dayName) async {
+    try {
+      DocumentSnapshot scheduleDoc = await FirebaseFirestore.instance
+          .collection('Schedules')
+          .doc(scheduleName)
+          .get();
+
+      if (scheduleDoc.exists) {
+        Map<String, dynamic> scheduleData =
+        scheduleDoc.data() as Map<String, dynamic>;
+
+        List<dynamic> slots = scheduleData['week'][dayName] ?? [];
+
+        setState(() {
+          availableSlots = slots
+              .where((slot) => slot['status'] == 'available')
+              .map((slot) => {"time": slot['time'], "status": slot['status']})
+              .toList();
+
+          // Reset selectedSlot if it is no longer valid
+          if (!availableSlots.any((slot) => slot['time'] == selectedSlot)) {
+            selectedSlot = null; // Reset to null if the selected slot isn't available
+          }
+        });
+
+        print("Available slots for $dayName: $availableSlots");
+      } else {
+        print("Schedule document not found: $scheduleName");
+      }
+    } catch (e) {
+      print("Error fetching available slots: $e");
+    }
+  }
+
+  void saveChanges() async {
+    try {
+      // Validate required fields
+      if (selectedDate == null || selectedSlot == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Please select a valid date and time slot.')),
+        );
+        return;
+      }
+
+      final updatedAppointment = Appointment(
+        id: widget.appointment.id,
+        location: addressController.text,
+        doctor: widget.appointment.doctor ?? "Unknown Doctor",
+        date: selectedDate!.toIso8601String().split('T')[0],
+        time: selectedSlot!,
+        email: widget.appointment.email,
       );
+
+      await Provider.of<DatabaseAccess>(context, listen: false)
+          .updateAppointment(widget.appointment.id!, updatedAppointment);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Appointment successfully modified!')),
+      );
+      Navigator.pop(context);
     } catch (e) {
-      print('Error parsing time: $e');
-      selectedTime = TimeOfDay.now(); // Fallback to current time if parsing fails
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to modify appointment: $e')),
+      );
     }
-  }
-
-
-  @override
-  void dispose() {
-    locationController.dispose();
-    doctorController.dispose();
-    super.dispose();
-  }
-
-  Widget _buildLocationStep(Localization bundle) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Container(
-          width: 330,
-          height: 80,
-          decoration: const BoxDecoration(
-            color: Colors.blueAccent,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.blueAccent,
-                blurRadius: 4,
-                offset: Offset(0, 4),
-                spreadRadius: 0,
-              ),
-            ],
-          ),
-
-          child: Center(
-            child: Text(
-              '${bundle.translation('location')}',
-              style: TextStyle(
-                fontSize: bundle.currentLanguage == 'EN' ? 24:20,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-          ),
-        ),
-        SizedBox(height: 50,),
-        Container(
-            padding: EdgeInsets.only(left: 40, right: 40),
-            child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  padding: EdgeInsets.symmetric(horizontal: 28, vertical: 16),
-                  backgroundColor: Colors.white54,
-                ),
-                onPressed: (){},
-                child: Text('${bundle.translation('pickLocation')}')
-            )
-        ),
-        SizedBox(height: 50,),
-        Container(
-            padding: EdgeInsets.only(left: 20, right: 20),
-            child: Text('${bundle.translation('or')}',style: TextStyle(fontSize: 24),)
-        ),
-        SizedBox(height: 30,),
-        Container(
-            padding: EdgeInsets.only(left: 40, right: 40),
-            child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  padding: EdgeInsets.symmetric(horizontal: 28, vertical: 16),
-                  backgroundColor: Colors.white54,
-                ),
-                onPressed: (){},
-                child: Text('${bundle.translation('pickNearest')}')
-            )
-        ),
-        const SizedBox(height: 20),
-        Text(
-          bundle.translation('modifyLocation'),
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 20),
-        TextField(
-          controller: locationController,
-          decoration: InputDecoration(
-            labelText: bundle.translation('location'),
-            border: const OutlineInputBorder(),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDateTimeStep(Localization bundle) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Container(
-          width: 370,
-          height: 80,
-          decoration: const BoxDecoration(
-            color: Colors.blueAccent,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.blueAccent,
-                blurRadius: 4,
-                offset: Offset(0, 4),
-                spreadRadius: 0,
-              ),
-            ],
-          ),
-
-          child: Center(
-            child: Text(
-              '${bundle.translation('date')} & ${bundle.translation('time')} ',
-              style: TextStyle(
-                fontSize: bundle.currentLanguage == 'EN' ? 24:20,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 20),
-        Text(
-          bundle.translation('modifyDatetime'),
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 20),
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.blue, // Blue background
-            foregroundColor: Colors.white, // White text
-          ),
-          onPressed: () async {
-            final pickedDate = await showDatePicker(
-              context: context,
-              initialDate: selectedDate,
-              firstDate: DateTime.now(),
-              lastDate: DateTime(2100),
-            );
-            if (pickedDate != null) {
-              setState(() {
-                selectedDate = pickedDate;
-              });
-            }
-          },
-          child: Text(
-            selectedDate != null
-                ? '${bundle.translation('selectedDate')}: ${DateFormat('yyyy-MM-dd').format(selectedDate!)}'
-                : bundle.translation('pickDate'),
-          ),
-        ),
-        const SizedBox(height: 20),
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.blue, // Blue background
-            foregroundColor: Colors.white, // White text
-          ),
-          onPressed: () async {
-            final pickedTime = await showTimePicker(
-              context: context,
-              initialTime: selectedTime ?? TimeOfDay.now(),
-            );
-            if (pickedTime != null) {
-              setState(() {
-                selectedTime = pickedTime;
-              });
-            }
-          },
-          child: Text(
-            selectedTime != null
-                ? '${bundle.translation('selectedTime')} ${selectedTime!.format(context)}'
-                : bundle.translation('pickTime'),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDoctorStep(Localization bundle) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Container(
-          width: 330,
-          height: 80,
-          decoration: const BoxDecoration(
-            color: Colors.blueAccent,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.blueAccent,
-                blurRadius: 4,
-                offset: Offset(0, 4),
-                spreadRadius: 0,
-              ),
-            ],
-          ),
-
-          child: Center(
-            child: Text(
-              '${bundle.translation('doctor')} ',
-              style: TextStyle(
-                fontSize: bundle.currentLanguage == 'EN' ? 24:20,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 20),
-        Text(
-          bundle.translation('modifyDoctor'),
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 20),
-        DropdownButtonFormField<String>(
-          value: selectedDoctor ?? widget.appointment.doctor,
-          decoration: InputDecoration(
-            labelText: bundle.translation('doctor'),
-            border: const OutlineInputBorder(),
-          ),
-          items: doctors.map((doctor) {
-            return DropdownMenuItem<String>(
-              value: doctor,
-              child: Text(doctor),
-            );
-          }).toList(),
-          onChanged: (newValue) {
-            setState(() {
-              selectedDoctor = newValue;
-            });
-          },
-        ),
-      ],
-    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final bundle = Provider.of<Localization>(context);
-
-    void saveChanges() async {
-      try {
-        final updatedAppointment = Appointment(
-          email: widget.appointment.email,
-          date: selectedDate?.toIso8601String().split('T')[0] ?? '',
-          time:
-          '${selectedTime?.hour.toString().padLeft(2, '0')}:${selectedTime?.minute.toString().padLeft(2, '0')}',
-          location: locationController.text,
-          doctor: selectedDoctor,
-        );
-
-        await Provider.of<DatabaseAccess>(context, listen: false)
-            .updateAppointment(widget.appointment.id!, updatedAppointment);
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${bundle.translation('modifySuccessful')}')),
-        );
-
-        Navigator.pushNamed(context, '/main');
-      } catch (e) {
-        print('Error saving changes: $e');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${bundle.translation('modifyFailed')}')),
-        );
-      }
-    }
-
     return Scaffold(
       appBar: AppBar(
-        centerTitle: true,
-        title: Text('Health +', style: const TextStyle(fontSize: 24)),
-        leading: IconButton(
-          icon: const Icon(Icons.settings, size: 30), // Left icon
-          onPressed: () {
-            Navigator.pushNamed(context, '/settings');
-          },
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.person, size: 30), // Right icon
-            onPressed: () {
-              Navigator.pushNamed(context, '/account');
-            },
-          ),
-        ],
+        title: Text("Modify Appointment"),
       ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: IndexedStack(
-            index: currentStep,
-            children: [
-              _buildLocationStep(bundle),
-              _buildDateTimeStep(bundle),
-              _buildDoctorStep(bundle),
-            ],
-          ),
-        ),
-      ),
-      bottomNavigationBar: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue, // Blue background
-                    foregroundColor: Colors.white, // White text
-                  ),
-                  onPressed: () {
-                    Navigator.pop(context); // Navigate back to ModifyView
-                  },
-                  child: Text(bundle.translation('cancel')),
-                ),
-                Row(
-                  children: [
-                    if (currentStep > 0)
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue, // Blue background
-                          foregroundColor: Colors.white, // White text
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            currentStep--;
-                          });
-                        },
-                        child: Text(bundle.translation('back')),
-                      ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue, // Blue background
-                        foregroundColor: Colors.white, // White text
-                      ),
-                      onPressed: () {
-                        if (currentStep < 2) {
-                          setState(() {
-                            currentStep++;
-                          });
-                        } else {
-                          saveChanges();
-                        }
-                      },
-                      child: Text(
-                        currentStep < 2
-                            ? bundle.translation('next')
-                            : bundle.translation('modify'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            TextField(
+              controller: addressController,
+              readOnly: true,
+              decoration: InputDecoration(
+                labelText: "Location",
+                border: OutlineInputBorder(),
+              ),
             ),
-          ),
-          CustomBottomNavBar(
-            selectedNavItem: _selectedNavItem,
-            onItemTapped: (index) {
-              setState(() {
-                _selectedNavItem = index;
-              });
-            },
-          ),
-        ],
+            const SizedBox(height: 16),
+            TextField(
+              controller: TextEditingController(text: widget.appointment.doctor), // Directly set the doctor's name
+              readOnly: true,
+              decoration: InputDecoration(
+                labelText: "Doctor",
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TableCalendar(
+              firstDay: DateTime.now(),
+              lastDay: DateTime.now().add(Duration(days: 30)),
+              focusedDay: selectedDate ?? DateTime.now(),
+              selectedDayPredicate: (day) => isSameDay(selectedDate, day),
+              onDaySelected: (selectedDay, focusedDay) {
+                String dayName = DateFormat('EEEE').format(selectedDay);
+                if (availableDays.contains(dayName)) {
+                  setState(() {
+                    selectedDate = selectedDay;
+                    _fetchAvailableSlots(
+                        selectedDoctor?['schedule'], dayName);
+                  });
+                }
+              },
+            ),
+            DropdownButton<String>(
+              value: selectedSlot,
+              items: availableSlots.map((slot) {
+                return DropdownMenuItem<String>(
+                  value: slot['time'],
+                  child: Text(slot['time']),
+                );
+              }).toList(),
+              onChanged: (value) {
+                setState(() {
+                  selectedSlot = value;
+                });
+              },
+              hint: Text("Select a time slot"), // Provide a default hint if no slot is selected
+            ),
+            ElevatedButton(
+              onPressed: saveChanges,
+              child: const Text("Save Changes"),
+            ),
+          ],
+        ),
       ),
     );
   }
