@@ -74,6 +74,23 @@ class _BookingScreenState extends State<BookingScreen> {
       print("Error updating slot status: $e");
     }
   }
+  Future<bool> isSlotTaken(String doctorName, String date, String time) async {
+    try {
+      // Query Firestore for an appointment with the same doctor, date, and time
+      QuerySnapshot querySnapshot = await FirebaseFirestore.instance
+          .collection('Appointments') // Replace with your actual collection name
+          .where('doctor', isEqualTo: doctorName)
+          .where('date', isEqualTo: date)
+          .where('time', isEqualTo: time)
+          .get();
+
+      // If any documents are found, the slot is taken
+      return querySnapshot.docs.isNotEmpty;
+    } catch (e) {
+      print("Error checking slot availability: $e");
+      return true; // Default to slot being taken if an error occurs
+    }
+  }
 
   Future<void> fetchCurrentUser() async {
     // Fetch the current user
@@ -89,19 +106,16 @@ class _BookingScreenState extends State<BookingScreen> {
     DateTime now = DateTime.now();
     List<String> availableDates = [];
 
-    // Iterate over the next 4 weeks
     for (int i = 0; i < 28; i++) {
       DateTime date = now.add(Duration(days: i));
       String weekday = DateFormat('EEEE').format(date);
 
-      // Check if the day matches the doctor's schedule
       if (daysOfWeek.contains(weekday)) {
-        availableDates.add(DateFormat('yyyy-MM-dd').format(date));
+        availableDates.add(DateFormat('yyyy-MM-dd').format(date)); // Full date
       }
     }
     return availableDates;
   }
-
   Future<void> markSlotAsOccupied(String schedulePath, DateTime date, String time) async {
     try {
       String formattedDate = DateFormat('yyyy-MM-dd').format(date);
@@ -234,45 +248,53 @@ class _BookingScreenState extends State<BookingScreen> {
 
   Future<void> _fetchAvailableDays(String schedulePath) async {
     try {
+      // Fetch the schedule document for the doctor
       DocumentSnapshot scheduleDoc =
       await FirebaseFirestore.instance.doc(schedulePath).get();
 
       Map<String, dynamic> scheduleData = scheduleDoc.data() as Map<String, dynamic>;
-      List<String> workingDays = scheduleData['workingDays']; // e.g., ["Monday", "Wednesday"]
 
-      // Map working days to actual dates
+      // Get the keys (day names) from the 'week' field
+      List<String> workingDays = scheduleData['week'].keys.toList();
+
       setState(() {
-        availableDays = getDatesForDays(workingDays);
+        availableDays = workingDays; // Store available day names like ["Monday", "Friday"]
       });
 
-      print("Available Dates: $availableDays"); // Debugging
+      print("Available Days: $availableDays");
     } catch (e) {
       print("Error fetching available days: $e");
     }
   }
 
-
-  Future<void> _fetchAvailableSlots(String schedulePath, String selectedDay) async {
+  Future<void> _fetchAvailableSlots(String schedulePath, String selectedDayName) async {
     try {
+      // Fetch the schedule document for the doctor
       DocumentSnapshot scheduleDoc =
       await FirebaseFirestore.instance.doc(schedulePath).get();
 
       Map<String, dynamic> scheduleData = scheduleDoc.data() as Map<String, dynamic>;
-      List<dynamic> slots = scheduleData['week'][selectedDay];
 
+      // Get slots for the selected day
+      List<dynamic> slots = scheduleData['week'][selectedDayName] ?? [];
+
+      // Filter available slots
       setState(() {
         availableSlots = slots
-            .where((slot) => slot['status'] == 'available')
+            .where((slot) => slot['status'] == 'available') // Show only 'available' slots
             .map((slot) => {
           "time": slot['time'],
           "status": slot['status'],
         })
             .toList();
       });
+
+      print("Available Slots for $selectedDayName: $availableSlots");
     } catch (e) {
       print("Error fetching available slots: $e");
     }
   }
+
 
   Future<void> _getAddressFromCoordinates(LatLng coordinates) async {
     try {
@@ -401,13 +423,13 @@ class _BookingScreenState extends State<BookingScreen> {
             onChanged: (value) {
               setState(() {
                 selectedDoctor = value;
-                // Ensure selectedSchedulePath is extracted correctly
                 selectedSchedulePath = (value?['schedule'] as DocumentReference).path;
                 print("Selected Doctor: ${selectedDoctor?['name']}");
-                print("Selected Schedule Path: $selectedSchedulePath");
+                _fetchAvailableDays(selectedSchedulePath!); // Fetch the days after selecting a doctor
               });
             },
           ),
+
         ],
         ElevatedButton(
           onPressed: selectedDoctor != null
@@ -431,14 +453,27 @@ class _BookingScreenState extends State<BookingScreen> {
         // Calendar Widget
         TableCalendar(
           firstDay: DateTime.now(),
-          lastDay: DateTime.now().add(Duration(days: 30)), // Show next 30 days
+          lastDay: DateTime.now().add(Duration(days: 30)), // Show the next 30 days
           focusedDay: selectedDate ?? DateTime.now(),
-          calendarFormat: CalendarFormat.month,
+          selectedDayPredicate: (day) =>
+          selectedDate != null && isSameDay(selectedDate, day),
+          onDaySelected: (selectedDay, focusedDay) {
+            String selectedDayName = DateFormat('EEEE').format(selectedDay); // Get the day name
+            print("Selected Day: $selectedDayName");
+
+            if (availableDays.contains(selectedDayName)) {
+              setState(() {
+                selectedDate = selectedDay;
+                _fetchAvailableSlots(selectedSchedulePath!, selectedDayName); // Fetch slots
+              });
+            } else {
+              print("Day not available: $selectedDayName");
+            }
+          },
           calendarBuilders: CalendarBuilders(
-            // Highlight available days
             defaultBuilder: (context, day, focusedDay) {
-              String formattedDay = DateFormat('EEEE').format(day); // Match weekday names (e.g., "Wednesday")
-              if (availableDays.contains(formattedDay)) {
+              String dayName = DateFormat('EEEE').format(day); // Get the day name
+              if (availableDays.contains(dayName)) {
                 return Center(
                   child: Container(
                     decoration: BoxDecoration(
@@ -446,28 +481,18 @@ class _BookingScreenState extends State<BookingScreen> {
                       shape: BoxShape.circle,
                     ),
                     child: Text(
-                      '${day.day}', // Show the day
+                      '${day.day}', // Show the day number
                       style: TextStyle(color: Colors.white),
                     ),
                   ),
                 );
               }
-              return null; // Default rendering for non-available days
+              return null; // Render normal days
             },
           ),
-          selectedDayPredicate: (day) =>
-          selectedDate != null && isSameDay(day, selectedDate),
-          onDaySelected: (selectedDay, focusedDay) {
-            String selectedDayName = DateFormat('EEEE').format(selectedDay);
-            print("Selected day: $selectedDayName"); // Debug selected day
-            if (availableDays.contains(selectedDayName)) {
-              setState(() {
-                selectedDate = selectedDay;
-                _fetchAvailableSlots(selectedSchedulePath!, selectedDayName);
-              });
-            }
-          },
         ),
+
+
 
         // Dropdown for Available Slots
         if (availableSlots.isNotEmpty)
@@ -476,15 +501,21 @@ class _BookingScreenState extends State<BookingScreen> {
             items: availableSlots.map((slot) {
               return DropdownMenuItem(
                 value: slot,
-                child: Text(slot['time']),
+                child: Text(slot['time']), // Show the time
               );
             }).toList(),
             onChanged: (value) {
               setState(() {
                 selectedSlot = value;
               });
+              print("Selected Slot: ${selectedSlot!['time']}");
             },
-          ),
+          )
+        else
+          Text("No available slots for the selected day."),
+
+
+
 
         // Book Appointment Button
         ElevatedButton(
@@ -493,33 +524,48 @@ class _BookingScreenState extends State<BookingScreen> {
               _selectedAddress != null &&
               selectedDoctor != null &&
               currentUser != null)
-              ? () {
-            // Log the variables before booking
-            print("Booking Details:");
-            print("Selected Date: ${DateFormat('yyyy-MM-dd').format(selectedDate!)}");
-            print("Selected Slot: ${selectedSlot?['time']}");
-            print("Selected Address: $_selectedAddress");
-            print("Selected Doctor: ${selectedDoctor?['name']}");
-            print("Current User Email: ${currentUser?.email}");
-            print("Notify By: $_notifyBy");
-
+              ? () async {
             try {
-              // Add the appointment
-              _db.addAppointment(
-                Appointment(
-                  email: currentUser!.email,
-                  date: DateFormat('yyyy-MM-dd').format(selectedDate!),
-                  time: selectedSlot!['time'],
-                  location: _selectedAddress!,
-                  doctor: selectedDoctor!['name'],
-                  notifyBy: _notifyBy ?? "default",
-                ),
-              );
+              String selectedDateStr = DateFormat('yyyy-MM-dd').format(selectedDate!);
+              String selectedTime = selectedSlot!['time'];
 
-              // Mark slot as occupied
-              markSlotAsOccupied(selectedSchedulePath!, selectedDate!, selectedSlot!['time']);
+              // Check if the slot is already taken
+              bool slotTaken = await isSlotTaken(selectedDoctor!['name'], selectedDateStr, selectedTime);
 
-              Navigator.pushNamed(context, '/main');
+              if (slotTaken) {
+                // Show a popup if the slot is taken
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: Text("Slot Already Taken"),
+                    content: Text("The selected time slot is no longer available. Please choose another slot."),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: Text("OK"),
+                      ),
+                    ],
+                  ),
+                );
+              } else {
+                // Proceed with booking if the slot is available
+                _db.addAppointment(
+                  Appointment(
+                    email: currentUser!.email,
+                    date: selectedDateStr,
+                    time: selectedTime,
+                    location: _selectedAddress!,
+                    doctor: selectedDoctor!['name'],
+                    notifyBy: _notifyBy ?? "default",
+                  ),
+                );
+
+                // Mark slot as occupied
+                markSlotAsOccupied(selectedSchedulePath!, selectedDate!, selectedTime);
+
+                // Navigate to main screen or show success message
+                Navigator.pushNamed(context, '/main');
+              }
             } catch (e) {
               print("Error booking appointment: $e");
             }

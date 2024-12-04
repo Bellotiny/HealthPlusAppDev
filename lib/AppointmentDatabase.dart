@@ -308,7 +308,23 @@ class DatabaseAccess with ChangeNotifier {
         .catchError((error) =>
         print('Failed to add the appointment to Firestore'));
   }
+  Future<bool> isSlotTaken(String doctorName, String date, String time) async {
+    try {
+      // Query Firestore for an appointment with the same doctor, date, and time
+      QuerySnapshot querySnapshot = await FirebaseFirestore.instance
+          .collection('Appointments') // Replace with your actual collection name
+          .where('doctor', isEqualTo: doctorName)
+          .where('date', isEqualTo: date)
+          .where('time', isEqualTo: time)
+          .get();
 
+      // If any documents are found, the slot is taken
+      return querySnapshot.docs.isNotEmpty;
+    } catch (e) {
+      print("Error checking slot availability: $e");
+      return true; // Default to slot being taken if an error occurs
+    }
+  }
   Future<List<Appointment>> getCurrentAppointments() async {
     DateTime now = DateTime.now();
     String today = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now
