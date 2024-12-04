@@ -59,7 +59,7 @@ class _LoginScreenState extends State<LoginScreen> {
             context: context,
             builder: (BuildContext context) {
               return AlertDialog(
-                title: Text("Login Failed"),
+                title: Text('${bundle.translation('loginfailed')}'),
                 content: Text('${bundle.translation('incorrectPassword')}'),
               );
             },
@@ -71,7 +71,7 @@ class _LoginScreenState extends State<LoginScreen> {
           context: context,
           builder: (BuildContext context) {
             return AlertDialog(
-              title: Text("Login Failed"),
+              title: Text('${bundle.translation('loginfailed')}'),
               content: Text('${bundle.translation('incorrectEmail')}'),
             );
           },
@@ -748,7 +748,7 @@ class _ValidateScreenState extends State<ValidateScreen> {
             foregroundColor: Colors.white,
           ),
           onPressed: _startEmailVerificationCheck,
-          child: Text(bundle.translation('verifyEmail')),
+          child: Text(bundle.translation('validateButton')),
         ),
         const SizedBox(height: 20),
         ElevatedButton(
@@ -761,7 +761,7 @@ class _ValidateScreenState extends State<ValidateScreen> {
             foregroundColor: Colors.white,
           ),
           onPressed: _db.sendEmailVerification,
-          child: Text(bundle.translation('resendEmail')),
+          child: Text(bundle.translation('resendCode')),
         ),
       ],
     );

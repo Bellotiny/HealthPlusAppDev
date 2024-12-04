@@ -173,6 +173,8 @@ class _ModifyScreenState extends State<ModifyScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bundle = Provider.of<Localization>(context);
+
     return Scaffold(
       appBar: AppBar(
         title: Text("Modify Appointment"),
@@ -185,7 +187,7 @@ class _ModifyScreenState extends State<ModifyScreen> {
               controller: addressController,
               readOnly: true,
               decoration: InputDecoration(
-                labelText: "Location",
+                labelText:'${bundle.translation('location')}',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -194,7 +196,7 @@ class _ModifyScreenState extends State<ModifyScreen> {
               controller: TextEditingController(text: widget.appointment.doctor), // Directly set the doctor's name
               readOnly: true,
               decoration: InputDecoration(
-                labelText: "Doctor",
+                labelText: '${bundle.translation('doctor')}',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -228,11 +230,11 @@ class _ModifyScreenState extends State<ModifyScreen> {
                   selectedSlot = value;
                 });
               },
-              hint: Text("Select a time slot"), // Provide a default hint if no slot is selected
+              hint: Text(bundle.translation('selectTime')), // Provide a default hint if no slot is selected
             ),
             ElevatedButton(
               onPressed: saveChanges,
-              child: const Text("Save Changes"),
+              child: Text(bundle.translation('save')),
             ),
           ],
         ),

@@ -11,6 +11,7 @@
       "password": "Password",
       "passwordTextField": "Enter password",
       "login": "Log In",
+      "loginfail": "Login Failed",
       "register": "Register",
       "forgotPassword": "Forgot Password",
       "age": "Age",
@@ -89,6 +90,11 @@
       "modifyFailed": "Failed to modify the appointment!",
       "incorrectPassword": "Incorrect Password!",
       "incorrectEmail": "Email not registered!",
+      "selectSpecialty": "Select a Specialty",
+      "selectDoctor": "Select a Doctor",
+      "selectTime": "Select a time slot",
+      "notAvailable": "No available slots for the selected day.",
+      "specialist": "specialist",
       "appointmentDeleted": "Appointment was deleted"
     }
   ],
@@ -105,6 +111,7 @@
       "password": "Mot de passe",
       "passwordTextField": "Entrez le mot de passe",
       "login": "Se connecter",
+      "loginfail": "Connection échouer",
       "register": "S'inscrire",
       "forgotPassword": "Mot de passe oublié",
       "age": "Âge",
@@ -182,6 +189,11 @@
       "bookingFailed": "Échec de la réservation du rendez-vous!",
       "modifyFailed": "Échec de la modification du rendez-vous!",
       "incorrectEmail": "E-mail non enregistré!",
+      "selectSpecialty": "Choisi un specialiste",
+      "selectDoctor": "Choisi un Docteur",
+      "selectTime": "Choisi un temps",
+      "specialist": "specialiste",
+      "notAvailable": "Ce temps a deja était reservé.",
       "appointmentDeleted": "Rendez-vous annulé"
     }
   ]

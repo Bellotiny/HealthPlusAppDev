@@ -14,7 +14,7 @@ class _ModifyViewState extends State<ModifyView> {
   int? selectedIndex;
   List<Appointment>? appointments;
   final DatabaseAccess _db = DatabaseAccess();
-  int _selectedNavItem = 2;
+  int _selectedNavItem = 1;
   User? currentUser;
 
   void _onItemTapped(int index) {
@@ -145,6 +145,7 @@ class _ModifyViewState extends State<ModifyView> {
           Padding(
             padding: const EdgeInsets.all(16),
             child: ElevatedButton(
+
               onPressed: selectedIndex == null
                   ? null
                   : () {
@@ -160,6 +161,7 @@ class _ModifyViewState extends State<ModifyView> {
                   _fetchAppointments();
                 });
               },
+
               child: Text(bundle.translation('modify')),
             ),
           ),

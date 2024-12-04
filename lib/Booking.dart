@@ -332,18 +332,18 @@ class _BookingScreenState extends State<BookingScreen> {
             currentBookingIndex = index;
           });
         },
-        items: const [
+        items: [
           BottomNavigationBarItem(
             icon: Icon(Icons.location_on),
-            label: 'Location',
+            label: '${bundle.translation('location')}',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person),
-            label: 'Doctor',
+            label: '${bundle.translation('doctor')}',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.calendar_today),
-            label: 'Schedule',
+            label: '${bundle.translation('book')}',
           ),
         ],
       ),
@@ -381,7 +381,8 @@ class _BookingScreenState extends State<BookingScreen> {
             });
           }
               : null,
-          child: Text("Next"),
+          child: Text('${bundle.translation('next')}'),
+
         ),
       ],
     );
@@ -396,7 +397,7 @@ class _BookingScreenState extends State<BookingScreen> {
         Padding(
           padding: const EdgeInsets.all(16.0),
           child: Text(
-            "Select Specialty",
+            '${bundle.translation('selectSpecialty')}',
             style: TextStyle(fontSize: 40, fontWeight: FontWeight.bold),
           ),
         ),
@@ -407,7 +408,9 @@ class _BookingScreenState extends State<BookingScreen> {
               return DropdownMenuItem(
                 value: specialty,
                 child: Text(specialty, style: TextStyle(fontSize: 25)),
+
               );
+
             }).toList(),
             onChanged: (value) {
               setState(() {
@@ -418,6 +421,7 @@ class _BookingScreenState extends State<BookingScreen> {
                 _fetchDoctors(value!);
               });
             },
+            hint: Text("Specialist"),
           ),
         ),
 
@@ -426,7 +430,7 @@ class _BookingScreenState extends State<BookingScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 16.0),
             child: Text(
-              "Select Doctor",
+              '${bundle.translation('selectDoctor')}',
               style: TextStyle(fontSize: 40, fontWeight: FontWeight.bold),
             ),
           ),
@@ -448,6 +452,7 @@ class _BookingScreenState extends State<BookingScreen> {
                   print("Selected Schedule Path: $selectedSchedulePath");
                 });
               },
+              hint:  Text(bundle.translation('doctor')),
             ),
           ),
 
@@ -463,7 +468,7 @@ class _BookingScreenState extends State<BookingScreen> {
               _fetchAvailableDays(selectedSchedulePath!);
             }
                 : null,
-            child: Text("Next"),
+            child: Text('${bundle.translation('next')}'),
           ),
         ),
       ],
@@ -536,7 +541,7 @@ class _BookingScreenState extends State<BookingScreen> {
             },
           )
         else
-          Text("No available slots for the selected day."),
+          Text('${bundle.translation('notAvailable')}'),
 
 
 
@@ -595,7 +600,7 @@ class _BookingScreenState extends State<BookingScreen> {
             }
           }
               : null,
-          child: Text("Book Appointment"),
+          child: Text('${bundle.translation('book')}'),
         ),
       ],
     );
