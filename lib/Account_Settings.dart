@@ -54,11 +54,40 @@ class _AccountScreenState extends State<AccountScreen> {
         context: context,
         builder: (BuildContext context) {
           return AlertDialog(
-            title: Text("Profile Change Failed"),
+            title: Text("${bundle.translation('profileChangeFailed')}"),
             content: Text(message),
           );
         },
       );
+    }
+
+    Future<void> _saveUser() async {
+      try {
+        await _db.updateUser(currentUser!.email,
+            User(
+              firstName: _firstNameController.text,
+              lastName: _lastNameController.text,
+              email: currentUser!.email,
+              age: int.parse(_ageController.text),
+              gender: _genderController.text,
+              password: currentUser!.password,
+              phoneNumber: _phoneNumberController.text,
+              authentifyBy: _authentifyBy,
+            ));
+        setState(() {
+          fillForm();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${bundle.translation('accountChangedSuccessful')}')),
+        );
+        print("User updated successfully.");
+      } catch (e) {
+        // Handle any errors during update
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${bundle.translation('accountChangedFailed')}')),
+        );
+        print("Failed to update user: $e");
+      }
     }
 
     return Scaffold(
@@ -183,42 +212,6 @@ class _AccountScreenState extends State<AccountScreen> {
                       textDirection: TextDirection.ltr,
                     ),
                   ),
-                  SizedBox(height: 60,),
-                  Row(crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [ SizedBox(width: bundle.currentLanguage == 'EN' ? 60:30,),Text("${bundle.translation('authenticate')}"),],),
-                  SizedBox(height: 20,),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.start,
-                    children: [
-                      SizedBox(width: 90),
-                      Radio<String>(
-                        value: "email",
-                        groupValue: currentUser?.authentifyBy,
-                        onChanged: (String? value) {
-                          setState(() {
-                            _authentifyBy = value;
-                          });
-                        },
-                      ),
-                      Text(bundle.translation('email')),
-                    ],
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.start,
-                    children: [
-                      SizedBox(width: 90),
-                      Radio<String>(
-                        value: "${bundle.translation('phone')}",
-                        groupValue: currentUser?.authentifyBy,
-                        onChanged: (String? value) {
-                          setState(() {
-                            _authentifyBy = value;
-                          });
-                        },
-                      ),
-                      Text(bundle.translation('phone')),
-                    ],
-                  ),
                   SizedBox(height: 40,),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -246,29 +239,31 @@ class _AccountScreenState extends State<AccountScreen> {
 
                           // Validate the age is a valid number
                           if (int.tryParse(_ageController.text) == null) {
+                            _showErrorMessage(context, '${bundle.translation('invalidAge')}');
                             print("Please enter a valid age");
                             return;
                           }
 
-                          // Proceed with updating the user
-                          try {
-                            await _db.updateUser(currentUser!.email,
-                                User(
-                                  firstName: _firstNameController.text,
-                                  lastName: _lastNameController.text,
-                                  email: currentUser!.email,
-                                  age: int.parse(_ageController.text),
-                                  gender: _genderController.text,
-                                  password: currentUser!.password,
-                                  phoneNumber: _phoneNumberController.text,
-                                  authentifyBy: _authentifyBy,
-                                ));
-                            // Optionally show a success message
-                            print("User updated successfully.");
-                          } catch (e) {
-                            // Handle any errors during update
-                            print("Failed to update user: $e");
-                          }
+                          showDialog(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: Text(bundle.translation('confirmSave')),
+                              content: Text(bundle.translation('confirmSave')),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context),
+                                  child: Text(bundle.translation('cancel')),
+                                ),
+                                TextButton(
+                                  onPressed: () {
+                                    _saveUser();
+                                    Navigator.pop(context);
+                                  },
+                                  child: Text(bundle.translation('save')),
+                                ),
+                              ],
+                            ),
+                          );
                         },
                         child: Text("${bundle.translation('save')}"),
                       ),

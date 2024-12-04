@@ -61,7 +61,6 @@ class MyApp extends StatelessWidget {
         '/login': (context) => LoginScreen(),
         '/register': (context) => RegisterScreen(),
         '/validate': (context) => ValidateScreen(),
-        '/forgetPassword': (context) => ForgetPasswordScreen(),
         '/main': (context) => MainScreen(),
         '/booking': (context) => BookingScreen(),
         '/modify': (context) => ModifyView(),

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'Localization.dart'; // Import the Localization class
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'Localization.dart';
 
 class CustomBottomNavBar extends StatelessWidget {
   final int selectedNavItem;
@@ -172,5 +174,121 @@ class ThemeControl with ChangeNotifier {
       default:
         return ThemeData.light(); // Default theme
     }
+  }
+}
+
+class NotificationService {
+  static final NotificationService _instance = NotificationService._internal();
+
+  factory NotificationService() => _instance;
+
+  late FlutterLocalNotificationsPlugin _flutterLocalNotificationsPlugin;
+
+  Localization bundle = Localization();
+  
+  NotificationService._internal() {
+    _flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+    _initializeNotifications();
+  }
+
+  Future<void> _initializeNotifications() async {
+    // Request notification permissions for Android 13+ (if needed)
+    if (await Permission.notification.isDenied) {
+      await Permission.notification.request();
+    }
+
+    var initializationSettingsAndroid =
+    AndroidInitializationSettings('@mipmap/ic_launcher');
+    var initializationSettings = InitializationSettings(
+      android: initializationSettingsAndroid,
+    );
+    await _flutterLocalNotificationsPlugin.initialize(initializationSettings);
+  }
+
+  // Show a notification for a new or scheduled appointment
+  Future<void> showAppointmentNotification({
+    required String date,
+    required String time,
+    required String address,
+  }) async {
+    var androidDetails = AndroidNotificationDetails(
+      'health_channel',
+      'Health Plus Notifications',
+      channelDescription: 'Channel used for booking date notifications',
+      importance: Importance.high,
+      priority: Priority.high,
+      playSound: true,
+    );
+    var generalNotificationDetails =
+    NotificationDetails(android: androidDetails);
+
+    await _flutterLocalNotificationsPlugin.show(
+      0,
+      bundle.translation('hospitalAppointment'),
+      bundle.translation('appointmentNotificationMessage', {
+        'date': date,
+        'time': time,
+        'address': address,
+      }),
+      generalNotificationDetails,
+    );
+  }
+
+  // Show a notification for a cancelled appointment
+  Future<void> showCancellationNotification({
+    required String date,
+    required String time,
+    required String address,
+  }) async {
+    var androidDetails = AndroidNotificationDetails(
+      'health_channel',
+      'Health Plus Notifications',
+      channelDescription: 'Channel used for booking date notifications',
+      importance: Importance.high,
+      priority: Priority.high,
+      playSound: true,
+    );
+    var generalNotificationDetails =
+    NotificationDetails(android: androidDetails);
+
+    await _flutterLocalNotificationsPlugin.show(
+      1,
+      bundle.translation('appointmentCancelled'),
+      bundle.translation('cancellationNotificationMessage', {
+        'date': date,
+        'time': time,
+        'address': address,
+      }),
+      generalNotificationDetails,
+    );
+  }
+
+  // Show a notification for a modified appointment
+  Future<void> showModificationNotification({
+    required String newDate,
+    required String newTime,
+    required String address,
+  }) async {
+    var androidDetails = AndroidNotificationDetails(
+      'health_channel',
+      'Health Plus Notifications',
+      channelDescription: 'Channel used for booking date notifications',
+      importance: Importance.high,
+      priority: Priority.high,
+      playSound: true,
+    );
+    var generalNotificationDetails =
+    NotificationDetails(android: androidDetails);
+
+    await _flutterLocalNotificationsPlugin.show(
+      2,
+      bundle.translation('appointmentModified'),
+      bundle.translation('modificationNotificationMessage', {
+        'date': newDate,
+        'time': newTime,
+        'address': address,
+      }),
+      generalNotificationDetails,
+    );
   }
 }

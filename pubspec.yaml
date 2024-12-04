@@ -47,6 +47,7 @@ dependencies:
   permission_handler: any
   geolocator: any
   table_calendar: any
+  flutter_local_notifications: any
 
 
   # The following adds the Cupertino Icons font to your application.
@@ -85,6 +86,8 @@ flutter_native_splash:
   android: true # Enable native splash screen for Android
   ios: true     # Enable native splash screen for iOS
   fill: true    # Adjust the image to fill the splash screen
+  android_gravity: fill   # Ensures the image fills the screen for Android
+  ios_content_mode: scaleToFill
 
   # To add assets to your application, add an assets section, like this:
   # assets:

@@ -42,9 +42,21 @@ class Localization with ChangeNotifier {
   }
 
   // Method to retrieve the translation based on the current language and key
-  String translation(String key) {
+  String translation(String key, [Map<String, String>? variables]) {
     List<Map<String, dynamic>> bundle =
     _currentLanguage == 'EN' ? _bundleEN : _bundleFR;
-    return bundle.isNotEmpty ? bundle[0][key] ?? '' : '';
+
+    // Retrieve the template for the given key
+    String template = bundle.isNotEmpty ? bundle[0][key] ?? '' : '';
+
+    // Replace placeholders in the template if variables are provided
+    if (variables != null) {
+      variables.forEach((placeholder, value) {
+        template = template.replaceAll('{$placeholder}', value);
+      });
+    }
+
+    return template;
   }
+
 }

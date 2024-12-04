@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:healthplusappdev/SettingsControl.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'Localization.dart';
 import 'AppointmentDatabase.dart';
-import 'SettingsControl.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:http/http.dart' as http;
@@ -24,8 +24,6 @@ class BookingScreen extends StatefulWidget {
 class _BookingScreenState extends State<BookingScreen> {
   final DatabaseAccess _db = DatabaseAccess();
   TextEditingController addressController = TextEditingController();
-  LatLng? _selectedLocation;
-  DateTime focusedDay = DateTime.now();
   String? _selectedAddress;
   LatLng _initialLocation = LatLng(45.5017, -73.5673);
   int currentBookingIndex = 0;
@@ -44,7 +42,6 @@ class _BookingScreenState extends State<BookingScreen> {
   List<Map<String, dynamic>> availableSlots = [];
   DateTime? selectedDate;
   TimeOfDay? selectedTime;
-  String email="sendozamiracle@gmail.com";
 
   @override
   void initState() {
@@ -75,6 +72,23 @@ class _BookingScreenState extends State<BookingScreen> {
       print("Error updating slot status: $e");
     }
   }
+  Future<bool> isSlotTaken(String doctorName, String date, String time) async {
+    try {
+      // Query Firestore for an appointment with the same doctor, date, and time
+      QuerySnapshot querySnapshot = await FirebaseFirestore.instance
+          .collection('Appointments') // Replace with your actual collection name
+          .where('doctor', isEqualTo: doctorName)
+          .where('date', isEqualTo: date)
+          .where('time', isEqualTo: time)
+          .get();
+
+      // If any documents are found, the slot is taken
+      return querySnapshot.docs.isNotEmpty;
+    } catch (e) {
+      print("Error checking slot availability: $e");
+      return true; // Default to slot being taken if an error occurs
+    }
+  }
 
   Future<void> fetchCurrentUser() async {
     // Fetch the current user
@@ -90,19 +104,16 @@ class _BookingScreenState extends State<BookingScreen> {
     DateTime now = DateTime.now();
     List<String> availableDates = [];
 
-    // Iterate over the next 4 weeks
-    for (int i = 0; i < 14; i++) {
+    for (int i = 0; i < 28; i++) {
       DateTime date = now.add(Duration(days: i));
       String weekday = DateFormat('EEEE').format(date);
 
-      // Check if the day matches the doctor's schedule
       if (daysOfWeek.contains(weekday)) {
-        availableDates.add(DateFormat('yyyy-MM-dd').format(date));
+        availableDates.add(DateFormat('yyyy-MM-dd').format(date)); // Full date
       }
     }
     return availableDates;
   }
-
   Future<void> markSlotAsOccupied(String schedulePath, DateTime date, String time) async {
     try {
       String formattedDate = DateFormat('yyyy-MM-dd').format(date);
@@ -235,48 +246,53 @@ class _BookingScreenState extends State<BookingScreen> {
 
   Future<void> _fetchAvailableDays(String schedulePath) async {
     try {
+      // Fetch the schedule document for the doctor
       DocumentSnapshot scheduleDoc =
       await FirebaseFirestore.instance.doc(schedulePath).get();
 
       Map<String, dynamic> scheduleData = scheduleDoc.data() as Map<String, dynamic>;
 
-      // Extract the keys (day names) from the 'week' map
-      Map<String, dynamic> weekData = scheduleData['week'];
-      List<String> dayNames = weekData.keys.toList();
-
-      print("Day Names: $dayNames");
+      // Get the keys (day names) from the 'week' field
+      List<String> workingDays = scheduleData['week'].keys.toList();
 
       setState(() {
-        availableDays = getDatesForDays(dayNames);
+        availableDays = workingDays; // Store available day names like ["Monday", "Friday"]
       });
 
-      print("Available Dates: $availableDays");
+      print("Available Days: $availableDays");
     } catch (e) {
       print("Error fetching available days: $e");
     }
   }
 
-  Future<void> _fetchAvailableSlots(String schedulePath, String selectedDay) async {
+  Future<void> _fetchAvailableSlots(String schedulePath, String selectedDayName) async {
     try {
+      // Fetch the schedule document for the doctor
       DocumentSnapshot scheduleDoc =
       await FirebaseFirestore.instance.doc(schedulePath).get();
 
       Map<String, dynamic> scheduleData = scheduleDoc.data() as Map<String, dynamic>;
-      List<dynamic> slots = scheduleData['week'][selectedDay];
 
+      // Get slots for the selected day
+      List<dynamic> slots = scheduleData['week'][selectedDayName] ?? [];
+
+      // Filter available slots
       setState(() {
         availableSlots = slots
-            .where((slot) => slot['status'] == 'available')
+            .where((slot) => slot['status'] == 'available') // Show only 'available' slots
             .map((slot) => {
           "time": slot['time'],
           "status": slot['status'],
         })
             .toList();
       });
+
+      print("Available Slots for $selectedDayName: $availableSlots");
     } catch (e) {
       print("Error fetching available slots: $e");
     }
   }
+
 
   Future<void> _getAddressFromCoordinates(LatLng coordinates) async {
     try {
@@ -315,18 +331,18 @@ class _BookingScreenState extends State<BookingScreen> {
             currentBookingIndex = index;
           });
         },
-        items: const [
+        items:  [
           BottomNavigationBarItem(
             icon: Icon(Icons.location_on),
-            label: 'Location',
+            label: '${bundle.translation('location')}',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person),
-            label: 'Doctor',
+            label: '${bundle.translation('doctor')}',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.calendar_today),
-            label: 'Schedule',
+            label: '${bundle.translation('schedule')}',
           ),
         ],
       ),
@@ -351,7 +367,7 @@ class _BookingScreenState extends State<BookingScreen> {
             controller: addressController,
             readOnly: true,
             decoration: InputDecoration(
-              labelText: "Selected Location",
+              labelText: "${bundle.translation('selectedLocation')}",
               border: OutlineInputBorder(),
             ),
           ),
@@ -364,7 +380,7 @@ class _BookingScreenState extends State<BookingScreen> {
             });
           }
               : null,
-          child: Text("Next"),
+          child: Text("${bundle.translation('next')}"),
         ),
       ],
     );
@@ -372,57 +388,83 @@ class _BookingScreenState extends State<BookingScreen> {
 
   Widget buildDoctor(BuildContext context, Localization bundle) {
     return Column(
+      mainAxisAlignment: MainAxisAlignment.center, // Centers vertically
+      crossAxisAlignment: CrossAxisAlignment.center, // Centers horizontally
       children: [
-        Text("Select Specialty"),
-        DropdownButton<String>(
-          value: selectedSpecialty,
-          items: specialties.map((specialty) {
-            return DropdownMenuItem(
-              value: specialty,
-              child: Text(specialty),
-            );
-          }).toList(),
-          onChanged: (value) {
-            setState(() {
-              selectedSpecialty = value;
-              doctorsList = [];
-              selectedDoctor = null; // Reset the doctor when specialty changes
-              print("Selected Specialty: $selectedSpecialty");
-              _fetchDoctors(value!);
-            });
-          },
+        // Specialty Dropdown
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Text(
+            "${bundle.translation('selectedSpecialty')}",
+            style: TextStyle(fontSize: bundle.currentLanguage == 'EN' ? 36:26, fontWeight: FontWeight.bold),
+          ),
         ),
-        if (doctorsList.isNotEmpty) ...[
-          Text("Select Doctor"),
-          DropdownButton<Map<String, dynamic>>(
-            value: selectedDoctor,
-            items: doctorsList.map((doctor) {
+        Center(
+          child: DropdownButton<String>(
+            value: selectedSpecialty,
+            items: specialties.map((specialty) {
               return DropdownMenuItem(
-                value: doctor,
-                child: Text(doctor['name']),
+                value: specialty,
+                child: Text(specialty, style: TextStyle(fontSize: 25)),
               );
             }).toList(),
             onChanged: (value) {
               setState(() {
-                selectedDoctor = value;
-                // Ensure selectedSchedulePath is extracted correctly
-                selectedSchedulePath = (value?['schedule'] as DocumentReference).path;
-                print("Selected Doctor: ${selectedDoctor?['name']}");
-                print("Selected Schedule Path: $selectedSchedulePath");
+                selectedSpecialty = value;
+                doctorsList = [];
+                selectedDoctor = null; // Reset the doctor when specialty changes
+                print("Selected Specialty: $selectedSpecialty");
+                _fetchDoctors(value!);
               });
             },
           ),
-        ],
-        ElevatedButton(
-          onPressed: selectedDoctor != null
-              ? () {
-            setState(() {
-              currentBookingIndex = 2;
-            });
-            _fetchAvailableDays(selectedSchedulePath!);
-          }
-              : null,
-          child: Text("Next"),
+        ),
+        SizedBox(height: 40,),
+
+        // Doctor Dropdown (if doctors are available)
+        if (doctorsList.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16.0),
+            child: Text(
+              "${bundle.translation('selectedDoctor')}",
+              style: TextStyle(fontSize: bundle.currentLanguage == 'EN' ? 36:26, fontWeight: FontWeight.bold),
+            ),
+          ),
+        if (doctorsList.isNotEmpty)
+          Center(
+            child: DropdownButton<Map<String, dynamic>>(
+              value: selectedDoctor,
+              items: doctorsList.map((doctor) {
+                return DropdownMenuItem(
+                  value: doctor,
+                  child: Text(doctor['name'], style: TextStyle(fontSize: 25)),
+                );
+              }).toList(),
+              onChanged: (value) {
+                setState(() {
+                  selectedDoctor = value;
+                  selectedSchedulePath = (value?['schedule'] as DocumentReference).path;
+                  print("Selected Doctor: ${selectedDoctor?['name']}");
+                  print("Selected Schedule Path: $selectedSchedulePath");
+                });
+              },
+            ),
+          ),
+
+        // Next Button
+        Padding(
+          padding: const EdgeInsets.only(top: 24.0),
+          child: ElevatedButton(
+            onPressed: selectedDoctor != null
+                ? () {
+              setState(() {
+                currentBookingIndex = 2;
+              });
+              _fetchAvailableDays(selectedSchedulePath!);
+            }
+                : null,
+            child: Text("${bundle.translation('next')}"),
+          ),
         ),
       ],
     );
@@ -432,60 +474,78 @@ class _BookingScreenState extends State<BookingScreen> {
   Widget buildDateTime(BuildContext context, Localization bundle) {
     return Column(
       children: [
+        // Calendar Widget
         TableCalendar(
           firstDay: DateTime.now(),
-          lastDay: DateTime.now().add(Duration(days: 14)),
+          lastDay: DateTime.now().add(Duration(days: 30)), // Show the next 30 days
           focusedDay: selectedDate ?? DateTime.now(),
-          calendarFormat: CalendarFormat.month,
-          calendarBuilders: CalendarBuilders(
-            defaultBuilder: (context, day, focusedDay) {
-              String formattedDay = DateFormat('EEEE').format(day);
-              bool isAvailable = availableDays.contains(formattedDay);
-
-              return Center(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: isAvailable ? Colors.green : Colors.grey[300],
-                    shape: BoxShape.circle,
-                  ),
-                  child: Text(
-                    '${day.day}',
-                    style: TextStyle(
-                      color: isAvailable ? Colors.white : Colors.black,
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-          selectedDayPredicate: (day) => selectedDate != null && isSameDay(day, selectedDate),
+          selectedDayPredicate: (day) =>
+          selectedDate != null && isSameDay(selectedDate, day),
           onDaySelected: (selectedDay, focusedDay) {
-            String selectedDayName = DateFormat('EEEE').format(selectedDay);
-            print("Selected day: $selectedDayName");
+            String selectedDayName = DateFormat('EEEE').format(selectedDay); // Get the day name
+            print("Selected Day: $selectedDayName");
+
             if (availableDays.contains(selectedDayName)) {
               setState(() {
                 selectedDate = selectedDay;
-                this.focusedDay = focusedDay;
-                _fetchAvailableSlots(selectedSchedulePath!, selectedDayName);
+                _fetchAvailableSlots(selectedSchedulePath!, selectedDayName); // Fetch slots
               });
+            } else {
+              print("Day not available: $selectedDayName");
             }
           },
+          calendarBuilders: CalendarBuilders(
+            defaultBuilder: (context, day, focusedDay) {
+              String dayName = DateFormat('EEEE').format(day); // Get the day name
+              if (availableDays.contains(dayName)) {
+                return Center(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.green, // Highlight available days
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      '${day.day}', // Show the day number
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                );
+              }
+              return null; // Render normal days
+            },
+          ),
         ),
+        SizedBox(height: 40,),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16.0),
+          child: Text(
+            "${bundle.translation('selectTimeslot')}",
+            style: TextStyle(fontSize: bundle.currentLanguage == 'EN' ? 36:22, fontWeight: FontWeight.bold),
+          ),
+        ),
+        SizedBox(height: 10,),
+        // Dropdown for Available Slots
         if (availableSlots.isNotEmpty)
           DropdownButton<Map<String, dynamic>>(
             value: selectedSlot,
             items: availableSlots.map((slot) {
               return DropdownMenuItem(
                 value: slot,
-                child: Text(slot['time']),
+                child: Text(slot['time']), // Show the time
               );
             }).toList(),
             onChanged: (value) {
               setState(() {
                 selectedSlot = value;
               });
+              print("Selected Slot: ${selectedSlot!['time']}");
             },
-          ),
+          )
+        else
+          Text("${bundle.translation('noTimeslots')}"),
+
+
+        SizedBox(height: 40,),
 
         // Book Appointment Button
         ElevatedButton(
@@ -494,39 +554,56 @@ class _BookingScreenState extends State<BookingScreen> {
               _selectedAddress != null &&
               selectedDoctor != null &&
               currentUser != null)
-              ? () {
-            // Log the variables before booking
-            print("Booking Details:");
-            print("Selected Date: ${DateFormat('yyyy-MM-dd').format(selectedDate!)}");
-            print("Selected Slot: ${selectedSlot?['time']}");
-            print("Selected Address: $_selectedAddress");
-            print("Selected Doctor: ${selectedDoctor?['name']}");
-            print("Current User Email: ${currentUser?.email}");
-            print("Notify By: $_notifyBy");
-
+              ? () async {
             try {
-              // Add the appointment
-              _db.addAppointment(
-                Appointment(
-                  email: currentUser!.email,
-                  date: DateFormat('yyyy-MM-dd').format(selectedDate!),
-                  time: selectedSlot!['time'],
-                  location: _selectedAddress!,
-                  doctor: selectedDoctor!['name'],
-                  notifyBy: _notifyBy ?? "default",
-                ),
-              );
+              String selectedDateStr = DateFormat('yyyy-MM-dd').format(selectedDate!);
+              String selectedTime = selectedSlot!['time'];
 
-              // Mark slot as occupied
-              markSlotAsOccupied(selectedSchedulePath!, selectedDate!, selectedSlot!['time']);
+              // Check if the slot is already taken
+              bool slotTaken = await isSlotTaken(selectedDoctor!['name'], selectedDateStr, selectedTime);
 
-              Navigator.pushNamed(context, '/main');
+              if (slotTaken) {
+                // Show a popup if the slot is taken
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: Text("${bundle.translation('slotTaken')}"),
+                    content: Text("${bundle.translation('slotNotAvailable')}"),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: Text("OK"),
+                      ),
+                    ],
+                  ),
+                );
+              } else {
+                // Proceed with booking if the slot is available
+                _db.addAppointment(
+                  Appointment(
+                    email: currentUser!.email,
+                    date: selectedDateStr,
+                    time: selectedTime,
+                    location: _selectedAddress!,
+                    doctor: selectedDoctor!['name'],
+                    notifyBy: _notifyBy ?? "default",
+                  ),
+                );
+
+                // Mark slot as occupied
+                markSlotAsOccupied(selectedSchedulePath!, selectedDate!, selectedTime);
+
+                NotificationService().showAppointmentNotification(
+                    date: selectedDateStr, time: selectedDateStr, address: _selectedAddress.toString());
+                // Navigate to main screen or show success message
+                Navigator.pushNamed(context, '/main');
+              }
             } catch (e) {
               print("Error booking appointment: $e");
             }
           }
               : null,
-          child: Text("Book Appointment"),
+          child: Text("${bundle.translation('book')}"),
         ),
       ],
     );

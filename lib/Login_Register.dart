@@ -39,41 +39,12 @@ class _LoginScreenState extends State<LoginScreen> {
     final bundle = Provider.of<Localization>(context);
 
     Future<void> verify(BuildContext context) async {
-      User? user = await _db.getUser(_emailController.text) as User?;
-
-      if (user != null) {
-        // Check if the password matches
-        if (user.password == _passwordController.text) {
-          if(await _db.login(user)){
-            print("Fire Authentication Login successful!");
-            Navigator.pushNamed(
-                context,
-                '/validate',
-                arguments: {"destination": "/main"}
-            );
-          }
-        } else {
-          // Password is incorrect
-          showDialog(
-            context: context,
-            builder: (BuildContext context) {
-              return AlertDialog(
-                title: Text("Login Failed"),
-                content: Text('${bundle.translation('incorrectPassword')}'),
-              );
-            },
-          );
-        }
-      } else {
-        // Email was not found in the database
-        showDialog(
-          context: context,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              title: Text("Login Failed"),
-              content: Text('${bundle.translation('incorrectEmail')}'),
-            );
-          },
+      if(await _db.login(_emailController.text,_passwordController.text)){
+        print("Fire Authentication Login successful!");
+        Navigator.pushNamed(
+            context,
+            '/validate',
+            arguments: {"action": "main"}
         );
       }
     }
@@ -230,10 +201,21 @@ class _LoginScreenState extends State<LoginScreen> {
                     onPressed: () async {
                       if (await _db.getUser(_emailController.text) != null) {
                         //Send 2FA
+                        _db.sendPasswordResetEmail(_emailController.text);
                         Navigator.pushNamed(
                           context,
                           '/validate',
-                          arguments: {'destination': 'forgetPassword'},
+                          arguments: {'action': 'forgetPassword'},
+                        );
+                      }else{
+                        showDialog(
+                          context: context,
+                          builder: (BuildContext context) {
+                            return AlertDialog(
+                              title: Text("${bundle.translation('noEmailInputted')}"),
+                              content: Text('${bundle.translation('inputEmail')}'),
+                            );
+                          },
                         );
                       }
                     },
@@ -290,7 +272,7 @@ class RegisterScreen extends StatefulWidget {
 
 class _RegisterScreenState extends State<RegisterScreen> {
   final DatabaseAccess _db = DatabaseAccess();
-  String? _authentifyBy = '';
+  String? _authentifyBy = 'E-Mail';
   TextEditingController _firstNameController = TextEditingController();
   TextEditingController _lastNameController = TextEditingController();
   TextEditingController _emailController = TextEditingController();
@@ -537,75 +519,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 SizedBox(
                   height: 40,
                 ),
-                Padding(
-                  padding: EdgeInsets.only(left: 20.0, right: 20.0),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: Colors.blueAccent, // Border color
-                        width: 2, // Border width
-                      ),
-                      borderRadius: BorderRadius.circular(
-                          12), // Optional: for rounded corners
-                    ),
-                    padding: EdgeInsets.all(5),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        SizedBox(
-                          height: 10,
-                        ),
-                        Text("${bundle.translation('authenticate')}"),
-                        SizedBox(
-                          height: 20,
-                        ),
-                        Column(
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.start,
-                              children: [
-                                SizedBox(
-                                  width: 90,
-                                ),
-                                Radio<String>(
-                                  value: "${bundle.translation('email')}",
-                                  groupValue: _authentifyBy,
-                                  onChanged: (String? value) {
-                                    setState(() {
-                                      _authentifyBy = value;
-                                    });
-                                  },
-                                ),
-                                Text("${bundle.translation('email')}"),
-                              ],
-                            ),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.start,
-                              children: [
-                                SizedBox(
-                                  width: 90,
-                                ),
-                                Radio<String>(
-                                  value: "${bundle.translation('phone')}",
-                                  groupValue: _authentifyBy,
-                                  onChanged: (String? value) {
-                                    setState(() {
-                                      _authentifyBy = value;
-                                    });
-                                  },
-                                ),
-                                Text("${bundle.translation('phone')}"),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                SizedBox(
-                  height: 40,
-                ),
                 ElevatedButton(
                     style: ElevatedButton.styleFrom(
                       shape: RoundedRectangleBorder(
@@ -643,9 +556,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
 }
 
 class ValidateScreen extends StatefulWidget {
-  final String? destination;
 
-  const ValidateScreen({super.key, this.destination});
+  const ValidateScreen({super.key});
 
   @override
   State<ValidateScreen> createState() => _ValidateScreenState();
@@ -654,7 +566,7 @@ class ValidateScreen extends StatefulWidget {
 
 class _ValidateScreenState extends State<ValidateScreen> {
   final DatabaseAccess _db = DatabaseAccess();
-  late String? destination;
+  late String? action;
   late TextEditingController _codeController = TextEditingController();
   bool isCheckingVerification = false;
 
@@ -669,8 +581,8 @@ class _ValidateScreenState extends State<ValidateScreen> {
     });
 
     if (verified) {
-      final route = destination == "forgetPassword" ? '/forgetPassword' : '/main';
-      Navigator.pushReplacementNamed(context, route);
+      print(action);
+      Navigator.pushReplacementNamed(context, '/main');
     } else {
       // Show error if the verification wasn't completed
       ScaffoldMessenger.of(context).showSnackBar(
@@ -696,7 +608,7 @@ class _ValidateScreenState extends State<ValidateScreen> {
     final bundle = Provider.of<Localization>(context);
 
     final routeArgs = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-    destination = routeArgs?['destination'];
+    action = routeArgs?['action'];
 
     return Scaffold(
     appBar: AppBar(
@@ -706,7 +618,7 @@ class _ValidateScreenState extends State<ValidateScreen> {
     body: Center(
       child: Padding(
         padding: const EdgeInsets.all(20.0),
-        child: isCheckingVerification
+        child: isCheckingVerification || action=="forgetPassword"
             ? const CircularProgressIndicator() // Show loader during polling
             : _buildEmail(context, bundle),
       ),
@@ -735,8 +647,9 @@ class _ValidateScreenState extends State<ValidateScreen> {
             ],
           ),
           child: Center(
-            child: Text(
-              '${bundle.translation('verifyIdentity')}',
+            child: Text(action!="forgetPassword" ?
+              '${bundle.translation('verifyIdentity')}':
+              '${bundle.translation('passwordChanged')}',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: bundle.currentLanguage == 'EN' ? 36 : 30,
@@ -746,7 +659,9 @@ class _ValidateScreenState extends State<ValidateScreen> {
           ),
         ),
         const SizedBox(height: 40),
-         Text('${bundle.translation('emailSent')}'),
+         Text(action!="forgetPassword"?
+         '${bundle.translation('emailSent')}':
+         '${bundle.translation('emailPasswordReset')}'),
         const SizedBox(height: 40),
         ElevatedButton(
           style: ElevatedButton.styleFrom(
@@ -775,226 +690,5 @@ class _ValidateScreenState extends State<ValidateScreen> {
         ),
       ],
     );
-  }
-
-  Column _buildPhone(BuildContext context, Localization bundle){
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.start,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        SizedBox(
-          height: 60,
-        ),
-        Container(
-          width: 330,
-          height: 80,
-          decoration: const BoxDecoration(
-            color: Color(0xFF529DFF),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.blueAccent,
-                blurRadius: 4,
-                offset: Offset(0, 4),
-                spreadRadius: 0,
-              ),
-            ],
-          ),
-          child: Center(
-            child: Text(
-              '${bundle.translation('verifyIdentity')}',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: bundle.currentLanguage == 'EN' ? 52 : 46,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ),
-        SizedBox(
-          height: 40,
-        ),
-        Container(
-          padding: EdgeInsets.only(left: 20, right: 20),
-          child: TextField(
-            controller: _codeController,
-            decoration: InputDecoration(
-              hintText: "${bundle.translation('enterCode')}",
-              border: OutlineInputBorder(),
-            ),
-            textDirection: TextDirection.ltr,
-          ),
-        ),
-        SizedBox(
-          height: 40,
-        ),
-        ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-              padding:
-              EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              backgroundColor: Colors.blueAccent,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () async {
-              if(await _db.verifyPhoneCode(_codeController.text)){
-                if(destination == 'main'){
-                  Navigator.pushNamed(context, '/main');
-                } else{
-                  Navigator.pushNamed(context, '/forgetPassword');
-                }
-              }
-            },
-            child: Text("${bundle.translation('validateButton')}")
-        ),
-        SizedBox(
-          height: 40,
-        ),
-        ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-              padding:
-              EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              backgroundColor: Colors.blueAccent,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () async {
-              if (destination == 'forgetPassword') {
-                Navigator.pushNamed(context, '/forgetPassword');
-              }
-            },
-            child: Text("${bundle.translation('resendCode')}")
-        ),
-      ],
-    );
-  }
-}
-
-class ForgetPasswordScreen extends StatefulWidget {
-  const ForgetPasswordScreen({super.key});
-
-  @override
-  State<ForgetPasswordScreen> createState() => _ForgetPasswordScreenState();
-}
-
-class _ForgetPasswordScreenState extends State<ForgetPasswordScreen> {
-  final DatabaseAccess _db = DatabaseAccess();
-  User? user;
-  TextEditingController _passwordController = TextEditingController();
-  String? email;
-
-  Future<bool> verifyPassword() async {
-    return _passwordController.text
-        .contains(RegExp(r'^(?=.*[A-Z])(?=.*[a-z])(?=.*\d).{6,}$'));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bundle = Provider.of<Localization>(context);
-
-    onGenerateRoute:
-    (settings) {
-      if (settings.name == '/forgetPassword') {
-        final args = settings.arguments as Map<String, dynamic>;
-        email = args['email'];
-        return MaterialPageRoute(builder: (context) => ForgetPasswordScreen());
-      }
-    };
-
-    return Scaffold(
-        appBar: AppBar(
-          centerTitle: true,
-          title: Text(
-            'Health +',
-            style: TextStyle(fontSize: 24),
-          ),
-        ),
-        body: Center(
-          child: Padding(
-            padding: EdgeInsets.all(20.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.start,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                SizedBox(
-                  height: 60,
-                ),
-                Container(
-                  width: 330,
-                  height: 80,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF529DFF),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.blueAccent,
-                        blurRadius: 4,
-                        offset: Offset(0, 4),
-                        spreadRadius: 0,
-                      ),
-                    ],
-                  ),
-                  child: Center(
-                    child: Text(
-                      '${bundle.translation('forgotPassword')}',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: bundle.currentLanguage == 'EN' ? 52 : 46,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-                SizedBox(
-                  height: 40,
-                ),
-                Container(
-                  padding: EdgeInsets.only(left: 20, right: 20),
-                  child: TextField(
-                    controller: _passwordController,
-                    decoration: InputDecoration(
-                      hintText: "${bundle.translation('passwordTextField')}",
-                      border: OutlineInputBorder(),
-                    ),
-                    textDirection: TextDirection.ltr,
-                  ),
-                ),
-                SizedBox(
-                  height: 40,
-                ),
-                ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      padding:
-                          EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                      backgroundColor: Colors.blueAccent,
-                      foregroundColor: Colors.white,
-                    ),
-                    onPressed: () async {
-                      user = _db.getUser(email!) as User?;
-                      if (await verifyPassword()) {
-                        _db.updatePassword(user!.email, _passwordController.text);
-                      } else {
-                        showDialog(
-                          context: context,
-                          builder: (BuildContext context) {
-                            return AlertDialog(
-                              title: Text("Password Change Failed"),
-                              content: Text(
-                                  '${bundle.translation('passwordRequirement')}'),
-                            );
-                          },
-                        );
-                      }
-                    },
-                    child: Text("${bundle.translation('validateButton')}")),
-              ],
-            ),
-          ),
-        ));
   }
 }

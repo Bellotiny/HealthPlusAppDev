@@ -96,7 +96,7 @@ class _ViewScreenState extends State<ViewScreen> {
                           ),
                         ),
                         const SizedBox(height: 60,),
-                        const Text('No appointments available.'),
+                        Text('${bundle.translation('noUpcoming')}'),
                       ],
                     ),
                   );
