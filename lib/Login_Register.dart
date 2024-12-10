@@ -14,7 +14,6 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  //Access to the database which was coded outside
   final DatabaseAccess _db = DatabaseAccess();
   TextEditingController _emailController = TextEditingController();
   TextEditingController _passwordController = TextEditingController();
@@ -102,15 +101,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       controller: _emailController,
                       decoration: InputDecoration(
                         labelText: "${bundle.translation('email')}",
-                        // The label text on top
                         hintText: "${bundle.translation('emailTextField')}",
-                        // Example text inside the box
                         border: OutlineInputBorder(),
-                        // Full border around the TextField
                         floatingLabelBehavior: FloatingLabelBehavior.always,
                       ),
                       textDirection: TextDirection
-                          .ltr, // Text direction from left to right
+                          .ltr,
                     )),
                 SizedBox(
                   height: 55,
@@ -124,10 +120,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       labelText: "${bundle.translation('password')}",
                       hintText: "${bundle.translation('passwordTextField')}",
                       border: OutlineInputBorder(),
-                      // Full border around the TextField
                       floatingLabelBehavior: FloatingLabelBehavior.always,
                     ),
-                    //Make sure it writes from left to right
                     textDirection: TextDirection.ltr,
                   ),
                 ),
@@ -158,7 +152,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: Text("${bundle.translation('register')}")),
                     ),
                     Container(
-                      width: 140, // Specify the width of the button here
+                      width: 140,
                       child: Padding(
                         padding: EdgeInsets.only(right: 20),
                         child: ElevatedButton(
@@ -326,7 +320,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
         return false;
       }
     } else {
-      // UserID already in use in the database
       _showErrorMessage(context, "${bundle.translation('accountUsed')}", bundle);
       return false;
     }
@@ -408,7 +401,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       labelText: "${bundle.translation('firstName')}",
                       hintText: "${bundle.translation('firstNameTextField')}",
                       border: OutlineInputBorder(),
-                      // Full border around the TextField
                       floatingLabelBehavior: FloatingLabelBehavior.always,
                     ),
                     textDirection: TextDirection.ltr,
@@ -425,7 +417,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       labelText: "${bundle.translation('lastName')}",
                       hintText: "${bundle.translation('lastNameTextField')}",
                       border: OutlineInputBorder(),
-                      // Full border around the TextField
                       floatingLabelBehavior: FloatingLabelBehavior.always,
                     ),
                     textDirection: TextDirection.ltr,
@@ -442,7 +433,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       labelText: "${bundle.translation('email')}",
                       hintText: "${bundle.translation('emailTextField')}",
                       border: OutlineInputBorder(),
-                      // Full border around the TextField
                       floatingLabelBehavior: FloatingLabelBehavior.always,
                     ),
                     textDirection: TextDirection.ltr,
@@ -459,7 +449,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       labelText: "${bundle.translation('age')}",
                       hintText: "${bundle.translation('ageTextField')}",
                       border: OutlineInputBorder(),
-                      // Full border around the TextField
                       floatingLabelBehavior: FloatingLabelBehavior.always,
                     ),
                     textDirection: TextDirection.ltr,
@@ -477,7 +466,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       labelText: "${bundle.translation('gender')}",
                       hintText: "${bundle.translation('genderTextField')}",
                       border: OutlineInputBorder(),
-                      // Full border around the TextField
                       floatingLabelBehavior: FloatingLabelBehavior.always,
                     ),
                     textDirection: TextDirection.ltr,
@@ -494,7 +482,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       labelText: "${bundle.translation('phone')}",
                       hintText: "+1 222-333-4444",
                       border: OutlineInputBorder(),
-                      // Full border around the TextField
                       floatingLabelBehavior: FloatingLabelBehavior.always,
                     ),
                     textDirection: TextDirection.ltr,
@@ -511,7 +498,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       labelText: "${bundle.translation('password')}",
                       hintText: "${bundle.translation('passwordTextField')}",
                       border: OutlineInputBorder(),
-                      // Full border around the TextField
                       floatingLabelBehavior: FloatingLabelBehavior.always,
                     ),
                   ),
@@ -530,7 +516,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       foregroundColor: Colors.white,
                     ),
                     onPressed: () async {
-                      //Check if the userID doesn't already exist so no problem occurs in database insert
                       if (await isAccountNotUsed(context,bundle)) {
                         _db.addUser(User(
                             firstName: _firstNameController.text,
@@ -584,7 +569,6 @@ class _ValidateScreenState extends State<ValidateScreen> {
       print(action);
       Navigator.pushReplacementNamed(context, '/main');
     } else {
-      // Show error if the verification wasn't completed
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${bundle.translation('emailNotVerified')}')),
       );
@@ -598,10 +582,9 @@ class _ValidateScreenState extends State<ValidateScreen> {
         return true;
       }
 
-      // Wait for the next retry
       await Future.delayed(interval);
     }
-    return false; // Verification not completed within the retries
+    return false;
   }
 
   Widget build(BuildContext context) {
@@ -619,7 +602,7 @@ class _ValidateScreenState extends State<ValidateScreen> {
       child: Padding(
         padding: const EdgeInsets.all(20.0),
         child: isCheckingVerification || action=="forgetPassword"
-            ? const CircularProgressIndicator() // Show loader during polling
+            ? const CircularProgressIndicator()
             : _buildEmail(context, bundle),
       ),
     ),

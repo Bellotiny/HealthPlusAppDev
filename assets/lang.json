@@ -113,7 +113,7 @@
       "appointmentCancelled": "Appointment Cancelled",
       "cancellationNotificationMessage": "The appointment on {date} at {time} at {address} was cancelled.",
       "appointmentModified": "Appointment Modified",
-      "modificationNotificationMessage": "Your appointment has been changed to {newDate} at {newTime} at {address}.",
+      "modificationNotificationMessage": "Your appointment has been changed to {date} at {time} at {address}.",
       "delete": "Delete",
       "confirmDelete": "Confirm Delete",
       "deleteConfirmation": "Confirming to delete this appointment",

@@ -206,7 +206,7 @@ class _AccountScreenState extends State<AccountScreen> {
                       decoration: InputDecoration(
                         labelText: "${bundle.translation('phone')}",
                         //hintText: "${bundle.translation('phoneTextField')}",
-                        border: OutlineInputBorder(), // Full border around the TextField
+                        border: OutlineInputBorder(),
                         floatingLabelBehavior: FloatingLabelBehavior.always,
                       ),
                       textDirection: TextDirection.ltr,
@@ -302,7 +302,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _language = bundle.currentLanguage;
       });
 
-      // Optionally load the language translations
       await bundle.readJSON();
     });
   }
@@ -439,7 +438,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           groupValue: bundle.currentLanguage,
           onChanged: (String? value) async {
             if (value != null) {
-              await bundle.switchLanguage(value); // Save and switch language
+              await bundle.switchLanguage(value);
             }
           },
         ),

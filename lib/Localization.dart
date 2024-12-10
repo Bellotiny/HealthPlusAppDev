@@ -4,33 +4,38 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class Localization with ChangeNotifier {
-  List<Map<String, dynamic>> _bundleEN = [];
-  List<Map<String, dynamic>> _bundleFR = [];
-  String _currentLanguage = 'EN'; // Default language
+  Map<String, dynamic> _bundleEN = {};
+  Map<String, dynamic> _bundleFR = {};
+  String _currentLanguage = 'EN';
 
-  List<Map<String, dynamic>> get bundleEN => _bundleEN;
-  List<Map<String, dynamic>> get bundleFR => _bundleFR;
+  Map<String, dynamic> get bundleEN => _bundleEN;
+  Map<String, dynamic> get bundleFR => _bundleFR;
   String get currentLanguage => _currentLanguage;
 
-  // Fetch content from the local JSON file
   Future<void> readJSON() async {
-    final String response = await rootBundle.loadString('assets/lang.json');
-    final Map<String, dynamic> data = json.decode(response);
+    try {
+      final String response = await rootBundle.loadString('assets/lang.json');
+      final Map<String, dynamic> data = json.decode(response);
 
-    _bundleEN = List<Map<String, dynamic>>.from(data["langEN"]);
-    _bundleFR = List<Map<String, dynamic>>.from(data["langFR"]);
+      _bundleEN = Map<String, dynamic>.from(data["langEN"][0]);
+      _bundleFR = Map<String, dynamic>.from(data["langFR"][0]);
 
+      //print('EN Bundle Loaded: $_bundleEN');
+      //print('FR Bundle Loaded: $_bundleFR');
+    } catch (e) {
+      print('Error loading JSON: $e');
+    }
     notifyListeners();
   }
 
   // Load the saved language preference
   Future<void> loadLanguagePreference() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
-    _currentLanguage = prefs.getString('selectedLanguage') ?? 'EN'; // Default to 'EN'
-    notifyListeners(); // Notify listeners to update UI with the correct language
+    _currentLanguage = prefs.getString('selectedLanguage') ?? 'EN';
+    notifyListeners();
   }
 
-  // Method to switch between languages
+  // Switch between languages
   Future<void> switchLanguage(String language) async {
     _currentLanguage = language;
 
@@ -38,18 +43,16 @@ class Localization with ChangeNotifier {
     SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setString('selectedLanguage', language);
 
-    notifyListeners(); // Notify widgets to rebuild with new language data
+    notifyListeners();
   }
 
-  // Method to retrieve the translation based on the current language and key
+  // Translate a key with optional variables
   String translation(String key, [Map<String, String>? variables]) {
-    List<Map<String, dynamic>> bundle =
+    Map<String, dynamic> bundle =
     _currentLanguage == 'EN' ? _bundleEN : _bundleFR;
 
-    // Retrieve the template for the given key
-    String template = bundle.isNotEmpty ? bundle[0][key] ?? '' : '';
+    String template = bundle[key] ?? key;
 
-    // Replace placeholders in the template if variables are provided
     if (variables != null) {
       variables.forEach((placeholder, value) {
         template = template.replaceAll('{$placeholder}', value);
@@ -58,5 +61,4 @@ class Localization with ChangeNotifier {
 
     return template;
   }
-
 }

@@ -32,7 +32,7 @@ class _ViewScreenState extends State<ViewScreen> {
         centerTitle: true,
         title: Text('Health +',style: TextStyle(fontSize: 24),),
         leading: IconButton(
-          icon: Icon(Icons.settings,size: 30,), // Left icon
+          icon: Icon(Icons.settings,size: 30,),
           onPressed: () {
             Navigator.pushNamed(
               context,
@@ -42,7 +42,7 @@ class _ViewScreenState extends State<ViewScreen> {
         ),
         actions: [
           IconButton(
-            icon: Icon(Icons.person,size: 30,), // Right icon
+            icon: Icon(Icons.person,size: 30,),
             onPressed: () {
               Navigator.pushNamed(
                 context,
@@ -142,17 +142,13 @@ class _ViewScreenState extends State<ViewScreen> {
                         padding: EdgeInsets.only(left: 20, right: 20),
                         child: ListView.builder(
                           shrinkWrap: true,
-                          // Makes the ListView take only as much space as needed
                           physics: NeverScrollableScrollPhysics(),
-                          // Disables scrolling for the ListView
                           itemCount: appointments.length,
                           itemBuilder: (context, index) {
                             final appointment = appointments[index];
                             return Container(
                               margin: EdgeInsets.symmetric(vertical: 8.0),
-                              // Adds space between each item
                               padding: EdgeInsets.all(12.0),
-                              // Adds padding inside the border
                               decoration: BoxDecoration(
                                 color: Provider.of<ThemeControl>(context).themeMode == 1
                                     ? Colors.black

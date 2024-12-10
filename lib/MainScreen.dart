@@ -33,7 +33,7 @@ class _MainScreenState extends State<MainScreen> {
         centerTitle: true,
         title: Text('Health +',style: TextStyle(fontSize: 24),),
         leading: IconButton(
-          icon: Icon(Icons.settings,size: 30,), // Left icon
+          icon: Icon(Icons.settings,size: 30,),
           onPressed: () {
             Navigator.pushNamed(
               context,
@@ -43,7 +43,7 @@ class _MainScreenState extends State<MainScreen> {
         ),
         actions: [
           IconButton(
-            icon: Icon(Icons.person,size: 30,), // Right icon
+            icon: Icon(Icons.person,size: 30,),
             onPressed: () {
               Navigator.pushNamed(
                 context,
@@ -57,7 +57,7 @@ class _MainScreenState extends State<MainScreen> {
         child: Padding(
             padding: EdgeInsets.all(20.0),
           child: FutureBuilder<List<Appointment?>>(
-                future: _db.getCurrentAppointments(), // Fetch appointments from the database
+                future: _db.getCurrentAppointments(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
@@ -144,17 +144,13 @@ class _MainScreenState extends State<MainScreen> {
                           padding: EdgeInsets.only(left: 20, right: 20),
                           child: ListView.builder(
                             shrinkWrap: true,
-                            // Makes the ListView take only as much space as needed
                             physics: NeverScrollableScrollPhysics(),
-                            // Disables scrolling for the ListView
                             itemCount: 1,
                             itemBuilder: (context, index) {
                               final appointment = appointments[index];
                               return Container(
                                 margin: EdgeInsets.symmetric(vertical: 8.0),
-                                // Adds space between each item
                                 padding: EdgeInsets.all(12.0),
-                                // Adds padding inside the border
                                 decoration: BoxDecoration(
                                   color: Provider.of<ThemeControl>(context).themeMode == 1
                                       ? Colors.black

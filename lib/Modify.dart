@@ -18,7 +18,7 @@ class ModifyScreen extends StatefulWidget {
 }
 
 class _ModifyScreenState extends State<ModifyScreen> {
-  late Localization bundle;
+  //late Localization bundle;
   TextEditingController addressController = TextEditingController();
   Map<String, dynamic>? selectedDoctor;
   String? selectedSchedulePath;
@@ -32,14 +32,13 @@ class _ModifyScreenState extends State<ModifyScreen> {
   void initState() {
     super.initState();
 
-    // Pre-fill fields from the appointment
     addressController.text = widget.appointment.location;
     selectedSlot = widget.appointment.time;
 
     try {
-      selectedDate = DateFormat('yyyy-MM-dd').parse(widget.appointment.date);
+      selectedDate = DateFormat('MMMM d, yyyy').parse(widget.appointment.date);
     } catch (e) {
-      print('Error parsing date: ${widget.appointment.date}');
+      print('Error attempting to parse date: ${widget.appointment.date}');
       selectedDate = DateTime.now();
     }
 
@@ -50,7 +49,6 @@ class _ModifyScreenState extends State<ModifyScreen> {
 
   Future<void> _fetchDoctorSchedule(String doctorName) async {
     try {
-      // Fetch the doctor's details (including schedule) from Firestore
       QuerySnapshot querySnapshot = await FirebaseFirestore.instance
           .collection('Doctors')
           .where('doctor', isEqualTo: doctorName)
@@ -79,7 +77,6 @@ class _ModifyScreenState extends State<ModifyScreen> {
 
   Future<void> _fetchScheduleDetails(String scheduleName) async {
     try {
-      // Fetch the schedule details from Firestore
       DocumentSnapshot scheduleDoc = await FirebaseFirestore.instance
           .collection('Schedules')
           .doc(scheduleName)
@@ -127,7 +124,7 @@ class _ModifyScreenState extends State<ModifyScreen> {
 
           // Reset selectedSlot if it is no longer valid
           if (!availableSlots.any((slot) => slot['time'] == selectedSlot)) {
-            selectedSlot = null; // Reset to null if the selected slot isn't available
+            selectedSlot = null;
           }
         });
 
@@ -140,9 +137,8 @@ class _ModifyScreenState extends State<ModifyScreen> {
     }
   }
 
-  void saveChanges() async {
+  void saveChanges(Localization bundle) async {
     try {
-      // Validate required fields
       if (selectedDate == null || selectedSlot == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('${bundle.translation('selectValidTimeslot')}')),
@@ -162,10 +158,18 @@ class _ModifyScreenState extends State<ModifyScreen> {
       await Provider.of<DatabaseAccess>(context, listen: false)
           .updateAppointment(widget.appointment.id!, updatedAppointment);
 
+      final notificationTitle = bundle.translation('appointmentModified');
+      final notificationMessage = bundle.translation('modificationNotificationMessage')
+          .replaceAll('{date}', selectedDate!.toIso8601String().split('T')[0])
+          .replaceAll('{time}', selectedSlot.toString())
+          .replaceAll('{address}', addressController.text);
+      print(notificationMessage);
+
       NotificationService().showModificationNotification(
-          newDate: selectedDate!.toIso8601String().split('T')[0],
-          newTime: selectedSlot.toString(),
-          address: addressController.text);
+        title: notificationTitle,
+        message: notificationMessage,
+      );
+
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${bundle.translation('modifySuccessful')}')),
@@ -180,7 +184,7 @@ class _ModifyScreenState extends State<ModifyScreen> {
 
   @override
   Widget build(BuildContext context) {
-    Localization bundle = Localization();
+    final bundle = Provider.of<Localization>(context);
     return Scaffold(
       appBar: AppBar(
         title: Text("${bundle.translation('modifyTitle')}"),
@@ -199,7 +203,7 @@ class _ModifyScreenState extends State<ModifyScreen> {
             ),
             const SizedBox(height: 16),
             TextField(
-              controller: TextEditingController(text: widget.appointment.doctor), // Directly set the doctor's name
+              controller: TextEditingController(text: widget.appointment.doctor),
               readOnly: true,
               decoration: InputDecoration(
                 labelText: "${bundle.translation('doctor')}",
@@ -236,10 +240,12 @@ class _ModifyScreenState extends State<ModifyScreen> {
                   selectedSlot = value;
                 });
               },
-              hint: Text("${bundle.translation('selectTimeslot')}"), // Provide a default hint if no slot is selected
+              hint: Text("${bundle.translation('selectTimeslot')}"),
             ),
             ElevatedButton(
-              onPressed: saveChanges,
+              onPressed: (){
+                saveChanges(bundle);
+              },
               child: Text("${bundle.translation('saveChanges')}"),
             ),
           ],

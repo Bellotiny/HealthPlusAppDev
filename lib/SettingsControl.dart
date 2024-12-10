@@ -16,13 +16,13 @@ class CustomBottomNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bundle = Provider.of<Localization>(context); // Get the current Localization
+    final bundle = Provider.of<Localization>(context);
 
     return BottomNavigationBar(
       items: <BottomNavigationBarItem>[
         BottomNavigationBarItem(
           icon: Icon(Icons.add_circle_outline),
-          label: bundle.translation('booking'), // Localized label
+          label: bundle.translation('booking'),
           backgroundColor: Colors.blueAccent,
         ),
         BottomNavigationBarItem(
@@ -48,11 +48,11 @@ class CustomBottomNavBar extends StatelessWidget {
       ],
       type: BottomNavigationBarType.shifting,
       currentIndex: selectedNavItem,
-      selectedItemColor: Colors.white,  // Color of icon and label when selected
-      unselectedItemColor: Colors.grey,  // Color of icon and label when unselected
-      selectedLabelStyle: TextStyle(color: Colors.white),  // Style for selected label
-      selectedIconTheme: IconThemeData(color: Colors.white),  // Icon color for selected item
-      unselectedLabelStyle: TextStyle(color: Colors.black),  // Style for unselected label
+      selectedItemColor: Colors.white,
+      unselectedItemColor: Colors.grey,
+      selectedLabelStyle: TextStyle(color: Colors.white),
+      selectedIconTheme: IconThemeData(color: Colors.white),
+      unselectedLabelStyle: TextStyle(color: Colors.black),
       unselectedIconTheme: IconThemeData(color: Colors.black),
       iconSize: 30,
       onTap: (index) {
@@ -94,7 +94,6 @@ class ThemeControl with ChangeNotifier {
     notifyListeners();
   }
 
-  // Return the current theme based on the theme mode
   ThemeData get currentTheme {
     switch (_themeMode) {
       case 0:
@@ -183,8 +182,6 @@ class NotificationService {
   factory NotificationService() => _instance;
 
   late FlutterLocalNotificationsPlugin _flutterLocalNotificationsPlugin;
-
-  Localization bundle = Localization();
   
   NotificationService._internal() {
     _flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
@@ -192,7 +189,6 @@ class NotificationService {
   }
 
   Future<void> _initializeNotifications() async {
-    // Request notification permissions for Android 13+ (if needed)
     if (await Permission.notification.isDenied) {
       await Permission.notification.request();
     }
@@ -207,9 +203,8 @@ class NotificationService {
 
   // Show a notification for a new or scheduled appointment
   Future<void> showAppointmentNotification({
-    required String date,
-    required String time,
-    required String address,
+    required String title,
+    required String message,
   }) async {
     var androidDetails = AndroidNotificationDetails(
       'health_channel',
@@ -224,21 +219,16 @@ class NotificationService {
 
     await _flutterLocalNotificationsPlugin.show(
       0,
-      bundle.translation('hospitalAppointment'),
-      bundle.translation('appointmentNotificationMessage', {
-        'date': date,
-        'time': time,
-        'address': address,
-      }),
+      title,
+      message,
       generalNotificationDetails,
     );
   }
 
   // Show a notification for a cancelled appointment
   Future<void> showCancellationNotification({
-    required String date,
-    required String time,
-    required String address,
+    required String title,
+    required String message,
   }) async {
     var androidDetails = AndroidNotificationDetails(
       'health_channel',
@@ -253,21 +243,16 @@ class NotificationService {
 
     await _flutterLocalNotificationsPlugin.show(
       1,
-      bundle.translation('appointmentCancelled'),
-      bundle.translation('cancellationNotificationMessage', {
-        'date': date,
-        'time': time,
-        'address': address,
-      }),
+      title,
+      message,
       generalNotificationDetails,
     );
   }
 
   // Show a notification for a modified appointment
   Future<void> showModificationNotification({
-    required String newDate,
-    required String newTime,
-    required String address,
+    required String title,
+    required String message,
   }) async {
     var androidDetails = AndroidNotificationDetails(
       'health_channel',
@@ -282,12 +267,8 @@ class NotificationService {
 
     await _flutterLocalNotificationsPlugin.show(
       2,
-      bundle.translation('appointmentModified'),
-      bundle.translation('modificationNotificationMessage', {
-        'date': newDate,
-        'time': newTime,
-        'address': address,
-      }),
+      title,
+      message,
       generalNotificationDetails,
     );
   }

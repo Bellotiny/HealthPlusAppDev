@@ -143,9 +143,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         padding: EdgeInsets.only(left: 20, right: 20),
                         child: ListView.builder(
                           shrinkWrap: true,
-                          // Makes the ListView take only as much space as needed
                           physics: NeverScrollableScrollPhysics(),
-                          // Disables scrolling for the ListView
                           itemCount: appointments.length,
                           itemBuilder: (context, index) {
                             final appointment = appointments[index];
@@ -153,7 +151,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               margin: EdgeInsets.symmetric(vertical: 8.0),
                               // Adds space between each item
                               padding: EdgeInsets.all(12.0),
-                              // Adds padding inside the border
                               decoration: BoxDecoration(
                                 color: Provider.of<ThemeControl>(context).themeMode == 1
                                   ? Colors.black

@@ -26,7 +26,7 @@ class _ModifyViewState extends State<ModifyView> {
   @override
   void initState() {
     super.initState();
-    _fetchAppointments(); // Fetch appointments when the view initializes
+    _fetchAppointments();
   }
 
   void _fetchAppointments() async {
@@ -45,7 +45,7 @@ class _ModifyViewState extends State<ModifyView> {
         centerTitle: true,
         title: Text('Health +', style: TextStyle(fontSize: 24)),
         leading: IconButton(
-          icon: Icon(Icons.settings, size: 30), // Left icon
+          icon: Icon(Icons.settings, size: 30),
           onPressed: () {
             Navigator.pushNamed(
               context,
@@ -55,7 +55,7 @@ class _ModifyViewState extends State<ModifyView> {
         ),
         actions: [
           IconButton(
-            icon: Icon(Icons.person, size: 30), // Right icon
+            icon: Icon(Icons.person, size: 30),
             onPressed: () {
               Navigator.pushNamed(
                 context,
@@ -156,7 +156,6 @@ class _ModifyViewState extends State<ModifyView> {
                         ModifyScreen(appointment: selectedAppointment),
                   ),
                 ).then((value) {
-                  // Refresh appointments after returning from ModifyScreen
                   _fetchAppointments();
                 });
               },
@@ -186,7 +185,7 @@ class _ModifyViewState extends State<ModifyView> {
           ),
           TextButton(
             onPressed: () {
-              _deleteAppointment(appointment);
+              _deleteAppointment(appointment, bundle);
               Navigator.pop(context);
             },
             child: Text(bundle.translation('delete')),
@@ -196,13 +195,19 @@ class _ModifyViewState extends State<ModifyView> {
     );
   }
 
-  void _deleteAppointment(Appointment appointment) async {
+  void _deleteAppointment(Appointment appointment, Localization bundle) async {
     await _db.deleteAppointment(appointment.id!);
     setState(() {
       appointments?.remove(appointment);
     });
+    final notificationTitle = bundle.translation('appointmentCancelled');
+    final notificationMessage = bundle.translation('cancellationNotificationMessage')
+        .replaceAll('{date}', appointment.date)
+        .replaceAll('{time}', appointment.time)
+        .replaceAll('{address}', appointment.location);
     NotificationService().showCancellationNotification(
-        date: appointment.date, time: appointment.time, address: appointment.location);
+        title: notificationTitle,
+        message: notificationMessage);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Appointment deleted successfully.')),
     );

@@ -107,7 +107,6 @@ class DatabaseAccess with ChangeNotifier {
         return false;
       }
 
-      // Reload user state from Firebase
       await currentUser.reload();
       final isVerified = currentUser.emailVerified;
 
@@ -140,9 +139,8 @@ class DatabaseAccess with ChangeNotifier {
 
 
     if (userEmail != null && getUser(userEmail) != null) {
-      // Fetch the user data from your SQL database using the userId
       _currentUser = await getUser(userEmail);
-      notifyListeners(); // Update the UI
+      notifyListeners();
       return true;
     }
     return false;
@@ -163,10 +161,8 @@ class DatabaseAccess with ChangeNotifier {
         .get();
 
     if (snapshot.docs.isNotEmpty) {
-      // Get the first matching document
       var doc = snapshot.docs.first;
 
-      // Update the password in Firestore
       await users.doc(doc.id).update({
         'password': newPassword,
       });
@@ -204,7 +200,6 @@ class DatabaseAccess with ChangeNotifier {
   }
 
   Future<User?> getUser(String email) async {
-    // Fetch user data from the 'users' collection
     QuerySnapshot snapshot = await users
         .where('email', isEqualTo: email)
         .get();
@@ -487,7 +482,7 @@ class DatabaseAccess with ChangeNotifier {
           formattedDate =
               dateFormat.format(dateTime);
         } catch (e) {
-          print('Error parsing date: $e');
+          print('Error trying to parse date: $e');
           return null;
         }
 
@@ -579,7 +574,6 @@ class DatabaseAccess with ChangeNotifier {
       }
     }
 
-    // Convert the map of weekly groups into a list of lists
     return weeklyGroups.values.toList();
   }
 
@@ -679,7 +673,7 @@ class Appointment {
     required this.time,
     required this.location,
     this.doctor,
-    this.notifyBy = "email", // Default value
+    this.notifyBy = "email",
   });
 
   Map<String, dynamic> toMap() {
@@ -731,9 +725,7 @@ class Doctor {
     if (data['schedule'] != null) {
       Map<String, dynamic> scheduleData = data['schedule'] as Map<String, dynamic>;
 
-      // Iterate through each day and time slots
       scheduleData.forEach((day, timeSlots) {
-        // Pass the day and timeSlots as a Map to Schedule.fromMap
         scheduleList.add(Schedule.fromMap({
           'day': day,
           'timeSlots': timeSlots,
@@ -772,10 +764,9 @@ class Schedule {
       if (data['timeSlots'] is Map) {
         Map<String, dynamic> timeSlotsData = data['timeSlots'] as Map<String, dynamic>;
         timeSlotsData.forEach((key, value) {
-          timeSlots.add(Slot.fromMap(value));  // Assuming the value is the slot data
+          timeSlots.add(Slot.fromMap(value));
         });
       } else if (data['timeSlots'] is List) {
-        // If it's already a list, map it to Slot objects
         timeSlots = (data['timeSlots'] as List).map((slotData) => Slot.fromMap(slotData)).toList();
       } else {
         print('Warning: TimeSlots data is not in a recognized format.');
@@ -813,8 +804,8 @@ class Slot {
 
   factory Slot.fromMap(Map<String, dynamic> data) {
     return Slot(
-      timeRange: data['time'] ?? '',  // Adjust based on your field names
-      status: data['status'] ?? 'available',  // Default to 'available' if missing
+      timeRange: data['time'] ?? '',
+      status: data['status'] ?? 'available',
     );
   }
 

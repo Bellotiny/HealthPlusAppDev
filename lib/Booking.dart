@@ -74,9 +74,8 @@ class _BookingScreenState extends State<BookingScreen> {
   }
   Future<bool> isSlotTaken(String doctorName, String date, String time) async {
     try {
-      // Query Firestore for an appointment with the same doctor, date, and time
       QuerySnapshot querySnapshot = await FirebaseFirestore.instance
-          .collection('Appointments') // Replace with your actual collection name
+          .collection('Appointments')
           .where('doctor', isEqualTo: doctorName)
           .where('date', isEqualTo: date)
           .where('time', isEqualTo: time)
@@ -86,7 +85,7 @@ class _BookingScreenState extends State<BookingScreen> {
       return querySnapshot.docs.isNotEmpty;
     } catch (e) {
       print("Error checking slot availability: $e");
-      return true; // Default to slot being taken if an error occurs
+      return true;
     }
   }
 
@@ -246,7 +245,6 @@ class _BookingScreenState extends State<BookingScreen> {
 
   Future<void> _fetchAvailableDays(String schedulePath) async {
     try {
-      // Fetch the schedule document for the doctor
       DocumentSnapshot scheduleDoc =
       await FirebaseFirestore.instance.doc(schedulePath).get();
 
@@ -267,19 +265,16 @@ class _BookingScreenState extends State<BookingScreen> {
 
   Future<void> _fetchAvailableSlots(String schedulePath, String selectedDayName) async {
     try {
-      // Fetch the schedule document for the doctor
       DocumentSnapshot scheduleDoc =
       await FirebaseFirestore.instance.doc(schedulePath).get();
 
       Map<String, dynamic> scheduleData = scheduleDoc.data() as Map<String, dynamic>;
 
-      // Get slots for the selected day
       List<dynamic> slots = scheduleData['week'][selectedDayName] ?? [];
 
-      // Filter available slots
       setState(() {
         availableSlots = slots
-            .where((slot) => slot['status'] == 'available') // Show only 'available' slots
+            .where((slot) => slot['status'] == 'available')
             .map((slot) => {
           "time": slot['time'],
           "status": slot['status'],
@@ -388,8 +383,8 @@ class _BookingScreenState extends State<BookingScreen> {
 
   Widget buildDoctor(BuildContext context, Localization bundle) {
     return Column(
-      mainAxisAlignment: MainAxisAlignment.center, // Centers vertically
-      crossAxisAlignment: CrossAxisAlignment.center, // Centers horizontally
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         // Specialty Dropdown
         Padding(
@@ -412,7 +407,7 @@ class _BookingScreenState extends State<BookingScreen> {
               setState(() {
                 selectedSpecialty = value;
                 doctorsList = [];
-                selectedDoctor = null; // Reset the doctor when specialty changes
+                selectedDoctor = null;
                 print("Selected Specialty: $selectedSpecialty");
                 _fetchDoctors(value!);
               });
@@ -477,7 +472,7 @@ class _BookingScreenState extends State<BookingScreen> {
         // Calendar Widget
         TableCalendar(
           firstDay: DateTime.now(),
-          lastDay: DateTime.now().add(Duration(days: 30)), // Show the next 30 days
+          lastDay: DateTime.now().add(Duration(days: 30)),
           focusedDay: selectedDate ?? DateTime.now(),
           selectedDayPredicate: (day) =>
           selectedDate != null && isSameDay(selectedDate, day),
@@ -488,7 +483,7 @@ class _BookingScreenState extends State<BookingScreen> {
             if (availableDays.contains(selectedDayName)) {
               setState(() {
                 selectedDate = selectedDay;
-                _fetchAvailableSlots(selectedSchedulePath!, selectedDayName); // Fetch slots
+                _fetchAvailableSlots(selectedSchedulePath!, selectedDayName);
               });
             } else {
               print("Day not available: $selectedDayName");
@@ -496,7 +491,7 @@ class _BookingScreenState extends State<BookingScreen> {
           },
           calendarBuilders: CalendarBuilders(
             defaultBuilder: (context, day, focusedDay) {
-              String dayName = DateFormat('EEEE').format(day); // Get the day name
+              String dayName = DateFormat('EEEE').format(day);
               if (availableDays.contains(dayName)) {
                 return Center(
                   child: Container(
@@ -531,7 +526,7 @@ class _BookingScreenState extends State<BookingScreen> {
             items: availableSlots.map((slot) {
               return DropdownMenuItem(
                 value: slot,
-                child: Text(slot['time']), // Show the time
+                child: Text(slot['time']),
               );
             }).toList(),
             onChanged: (value) {
@@ -563,7 +558,6 @@ class _BookingScreenState extends State<BookingScreen> {
               bool slotTaken = await isSlotTaken(selectedDoctor!['name'], selectedDateStr, selectedTime);
 
               if (slotTaken) {
-                // Show a popup if the slot is taken
                 showDialog(
                   context: context,
                   builder: (context) => AlertDialog(
@@ -593,8 +587,14 @@ class _BookingScreenState extends State<BookingScreen> {
                 // Mark slot as occupied
                 markSlotAsOccupied(selectedSchedulePath!, selectedDate!, selectedTime);
 
+                final notificationTitle = bundle.translation('hospitalAppointment');
+                final notificationMessage = bundle.translation('appointmentNotificationMessage')
+                    .replaceAll('{date}', selectedDateStr)
+                    .replaceAll('{time}', selectedTime)
+                    .replaceAll('{address}', _selectedAddress.toString());
                 NotificationService().showAppointmentNotification(
-                    date: selectedDateStr, time: selectedDateStr, address: _selectedAddress.toString());
+                    title: notificationTitle,
+                    message: notificationMessage);
                 // Navigate to main screen or show success message
                 Navigator.pushNamed(context, '/main');
               }
